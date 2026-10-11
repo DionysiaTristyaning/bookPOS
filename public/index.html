@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BookPOS - Kasir & Point of Sale</title>
+  <!-- Webix UI Framework via CDN -->
+  <link rel="stylesheet" href="https://cdn.webix.com/edge/webix.min.css" type="text/css">
+  <script src="https://cdn.webix.com/edge/webix.min.js" type="text/javascript"></script>
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body>
+<script>
+// State Aplikasi
+let currentCart = [];
+let allBooks = [];
+let categoriesList = [];
+let currentUser = { username: "kasir01", nama: "Budi Santoso", role: "kasir" };
+
+// Format Rupiah (Tanpa Desimal, sesuai Kamus Data)
+function formatRupiah(amount) {
+  const num = parseInt(amount) || 0;
+  return "Rp " + num.toLocaleString("id-ID");
+}
+
+// Normalisasi ISBN di client (buang tanda hubung dan spasi)
+function cleanISBN(str) {
+  return String(str || "").replace(/[^0-9X]/gi, "").toUpperCase();
+}
+
+// Audio Beep
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.value = 900;
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+  } catch (e) {}
+}
+
+// API Helper
+async function apiCall(endpoint, method = "GET", body = null) {
+  const options = {
+    method,
+    headers: { "Content-Type": "application/json" }
+  };
+  if (body) options.body = JSON.stringify(body);
+  try {
+    const res = await fetch("/api" + endpoint, options);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Gagal melakukan permintaan (" + res.status + ")");
+    }
+    return data;
+  } catch (err) {
+    console.error("API Error (" + endpoint + "):", err);
+    throw err;
+  }
+}
+
+// Cek Koneksi DB
+async function checkHealth() {
+  try {
+    const health = await apiCall("/health");
+    const pill = $$("db_status_pill");
+    if (pill) {
+      if (health.database_connected) {
+        pill.setHTML('<span class="status-pill status-online">● MongoDB Atlas Online</span>');
+      } else {
+        pill.setHTML('<span class="status-pill status-demo" title="' + (health.error || "Demo Mode") + '">⚡ Demo Mode (In-Memory)</span>');
+      }
+    }
+  } catch (e) {
+    const pill = $$("db_status_pill");
+    if (pill) pill.setHTML('<span class="status-pill status-demo">⚠️ API Offline</span>');
+  }
+}
+
+// Muat Kategori untuk Filter
+async function loadCategories() {
+  try {
+    categoriesList = await apiCall("/categories");
+    const filter = $$("category_filter");
+    if (filter) {
+      const opts = [{ id: "all", value: "Semua Kategori" }];
+      categoriesList.forEach(c => opts.push({ id: c.id, value: c.nama }));
+      filter.define("options", opts);
+      filter.refresh();
+    }
+  } catch (err) {
+    console.error("Gagal memuat kategori", err);
+  }
+}
+
+// Muat Katalog Buku
+async function loadCatalog() {
+  try {
+    const search = $$("search_input") ? $$("search_input").getValue().trim() : "";
+    const catId = $$("category_filter") ? $$("category_filter").getValue() : "all";
+
+    let url = "/books?status=aktif&";
+    if (search) url += "search=" + encodeURIComponent(search) + "&";
+    if (catId && catId !== "all") url += "kategori_id=" + encodeURIComponent(catId);
+
+    const books = await apiCall(url);
+    allBooks = books;
+    const table = $$("catalog_table");
+    if (table) {
+      table.clearAll();
+      table.parse(books);
+    }
+  } catch (err) {
+    webix.message({ type: "error", text: "Gagal memuat katalog buku: " + err.message });
+  }
+}
+
+// Tambah ke Keranjang
+function addToCart(book) {
+  if (!book || book.stok <= 0) {
+    webix.message({ type: "error", text: "Buku habis (stok 0)!" });
+    return;
+  }
+
+  const existing = currentCart.find(i => i.id === book.id);
+  if (existing) {
+    if (existing.qty >= book.stok) {
+      webix.message({ type: "error", text: "Stok tidak mencukupi! Hanya tersedia " + book.stok + " eksemplar." });
+      return;
+    }
+    existing.qty += 1;
+    existing.subtotal = existing.qty * existing.harga_jual;
+  } else {
+    currentCart.push({
+      id: book.id,
+      isbn: book.isbn,
+      judul: book.judul,
+      penulis: book.penulis,
+      harga_jual: parseInt(book.harga_jual) || 0,
+      stok: book.stok,
+      qty: 1,
+      subtotal: parseInt(book.harga_jual) || 0
+    });
+  }
+
+  playBeep();
+  renderCart();
+  webix.message({ type: "success", text: 'Ditambahkan: "' + book.judul + '"' });
+}
+
+// Ubah Jumlah Item di Keranjang
+function updateCartQty(bookId, delta) {
+  const itemIndex = currentCart.findIndex(i => i.id === bookId);
+  if (itemIndex === -1) return;
+
+  const item = currentCart[itemIndex];
+  const newQty = item.qty + delta;
+
+  if (newQty <= 0) {
+    currentCart.splice(itemIndex, 1);
+  } else {
+    const catalogBook = allBooks.find(b => b.id === bookId);
+    const maxStock = catalogBook ? catalogBook.stok : item.stok;
+    if (newQty > maxStock) {
+      webix.message({ type: "error", text: "Maksimal stok tercapai (" + maxStock + " eksemplar)" });
+      return;
+    }
+    item.qty = newQty;
+    item.subtotal = item.qty * item.harga_jual;
+  }
+  renderCart();
+}
+
+// Hapus Item dari Keranjang
+function removeCartItem(bookId) {
+  currentCart = currentCart.filter(i => i.id !== bookId);
+  renderCart();
+}
+
+// Kosongkan Keranjang
+function clearCart() {
+  currentCart = [];
+  renderCart();
+  if ($$("cash_input")) $$("cash_input").setValue("");
+  updateChangeDue();
+}
+
+// Render Tampilan Keranjang
+function renderCart() {
+  const table = $$("cart_table");
+  if (table) {
+    table.clearAll();
+    table.parse(currentCart);
+  }
+
+  const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+  const totalItems = currentCart.reduce((sum, i) => sum + i.qty, 0);
+
+  if ($$("total_display")) {
+    $$("total_display").setHTML(
+      '<div class="total-due-box">' +
+        '<div class="total-due-label">Total Tagihan</div>' +
+        '<div class="total-due-amount">' + formatRupiah(total) + '</div>' +
+        '<div style="font-size:11px; margin-top:4px; opacity:0.85;">Total ' + totalItems + ' buku di keranjang</div>' +
+      '</div>'
+    );
+  }
+
+  if ($$("cart_header_label")) {
+    $$("cart_header_label").setValue("🛒 Keranjang (" + totalItems + " item)");
+  }
+
+  updateChangeDue();
+}
+
+// Hitung Kembalian
+function updateChangeDue() {
+  const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+  const method = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
+  const cashInput = $$("cash_input");
+  const changeLabel = $$("change_due_label");
+
+  if (!changeLabel) return;
+
+  if (method !== "tunai") {
+    changeLabel.setHTML('<div style="font-size:11px; color:#64748b; padding-top:6px;">Tidak ada kembalian untuk <b>' + method.toUpperCase() + '</b></div>');
+    return;
+  }
+
+  const rawCash = cashInput ? cashInput.getValue().replace(/[^0-9]/g, "") : "0";
+  const cashVal = parseInt(rawCash) || 0;
+
+  if (cashVal === 0 && total === 0) {
+    changeLabel.setHTML('<div style="font-size:11px; color:#64748b;">Kembalian:<br><b style="font-size:14px; color:#0f172a;">Rp 0</b></div>');
+    return;
+  }
+
+  const diff = cashVal - total;
+  if (diff >= 0) {
+    changeLabel.setHTML('<div style="font-size:11px; color:#047857;">Kembalian:<br><b style="font-size:16px; color:#10b981;">+' + formatRupiah(diff) + '</b></div>');
+  } else {
+    changeLabel.setHTML('<div style="font-size:11px; color:#dc2626;">Kurang:<br><b style="font-size:15px; color:#ef4444;">-' + formatRupiah(Math.abs(diff)) + '</b></div>');
+  }
+}
+
+// Shortcut Tombol Uang Cepat (Rupiah Presets)
+function setQuickCash(amount) {
+  const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+  if ($$("cash_input")) {
+    if (amount === "pas") {
+      $$("cash_input").setValue(total > 0 ? String(total) : "");
+    } else {
+      $$("cash_input").setValue(String(amount));
+    }
+  }
+  updateChangeDue();
+}
+
+// Proses Pembayaran (Checkout)
+async function processCheckout() {
+  if (currentCart.length === 0) {
+    webix.message({ type: "error", text: "Keranjang masih kosong!" });
+    return;
+  }
+
+  const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+  const paymentMethod = $$("payment_method").getValue();
+  let cashReceived = total;
+
+  if (paymentMethod === "tunai") {
+    const rawVal = $$("cash_input").getValue().replace(/[^0-9]/g, "");
+    cashReceived = parseInt(rawVal) || 0;
+    if (cashReceived < total) {
+      webix.message({
+        type: "error",
+        text: "Uang tunai (" + formatRupiah(cashReceived) + ") kurang dari total tagihan (" + formatRupiah(total) + ")!"
+      });
+      return;
+    }
+  }
+
+  webix.extend($$("main_layout"), webix.ProgressBar);
+  $$("main_layout").showProgress({ type: "icon" });
+
+  try {
+    const payload = {
+      items: currentCart.map(item => ({
+        id: item.id,
+        isbn: item.isbn,
+        judul: item.judul,
+        qty: item.qty
+      })),
+      metode_pembayaran: paymentMethod,
+      tunai_diterima: cashReceived,
+      kasir_nama: currentUser.nama
+    };
+
+    const res = await apiCall("/checkout", "POST", payload);
+    $$("main_layout").hideProgress();
+
+    // Tampilkan Struk Thermal
+    showReceiptModal(res.transaction);
+
+    // Reset Keranjang & Refresh Katalog
+    clearCart();
+    await loadCatalog();
+    webix.message({ type: "success", text: "Transaksi Berhasil! No Faktur: " + res.transaction.no_faktur });
+  } catch (err) {
+    $$("main_layout").hideProgress();
+    webix.message({ type: "error", text: "Transaksi gagal: " + err.message });
+  }
+}
+
+// Modal Struk Thermal (Thermal Receipt)
+function showReceiptModal(tx) {
+  const itemsHtml = (tx.items || []).map(item => 
+    '<div class="receipt-row">' +
+      '<div style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + item.judul + '</div>' +
+      '<div>' + item.qty + 'x ' + formatRupiah(item.harga_jual) + '</div>' +
+      '<div style="font-weight:700;">' + formatRupiah(item.subtotal) + '</div>' +
+    '</div>'
+  ).join("");
+
+  const receiptContent = 
+    '<div class="receipt-paper" id="printable_receipt">' +
+      '<div class="receipt-header">' +
+        '<div class="receipt-store-name">📚 TOKO BUKU BOOKPOS</div>' +
+        '<div class="receipt-sub">Pusat Buku & Literatur Terlengkap</div>' +
+        '<div class="receipt-sub">Telp: 021-555-8989</div>' +
+      '</div>' +
+      '<div class="receipt-divider"></div>' +
+      '<div class="receipt-row"><span>No Faktur:</span><span style="font-weight:700;">' + tx.no_faktur + '</span></div>' +
+      '<div class="receipt-row"><span>Waktu:</span><span>' + new Date(tx.created_at).toLocaleString("id-ID") + '</span></div>' +
+      '<div class="receipt-row"><span>Kasir:</span><span>' + (tx.kasir_nama || "Kasir") + '</span></div>' +
+      '<div class="receipt-row"><span>Pembayaran:</span><span style="text-transform:uppercase; font-weight:700;">' + tx.metode_pembayaran + '</span></div>' +
+      '<div class="receipt-divider"></div>' +
+      itemsHtml +
+      '<div class="receipt-total-row">' +
+        '<span>TOTAL AKHIR</span>' +
+        '<span>' + formatRupiah(tx.total) + '</span>' +
+      '</div>' +
+      (tx.metode_pembayaran === "tunai" ? 
+        '<div class="receipt-row" style="margin-top:6px;"><span>Uang Tunai:</span><span>' + formatRupiah(tx.tunai_diterima) + '</span></div>' +
+        '<div class="receipt-row"><span>Kembalian:</span><span style="font-weight:700; color:#059669;">' + formatRupiah(tx.kembalian) + '</span></div>' 
+        : '') +
+      '<div class="receipt-divider"></div>' +
+      '<div class="receipt-footer">' +
+        '<div>Terima kasih atas kunjungan Anda!</div>' +
+        '<div style="margin-top:4px;">Buku yang dibeli dapat ditukar max 7 hari dg membawa struk ini.</div>' +
+        '<div style="margin-top:8px; font-family:monospace; letter-spacing:3px; font-weight:bold;">*' + tx.no_faktur + '*</div>' +
+      '</div>' +
+    '</div>';
+
+  if ($$("receipt_window")) $$("receipt_window").destructor();
+
+  webix.ui({
+    view: "window",
+    id: "receipt_window",
+    modal: true,
+    position: "center",
+    width: 390,
+    head: {
+      view: "toolbar",
+      cols: [
+        { view: "label", label: "🧾 Struk Pembayaran" },
+        { view: "icon", icon: "wxi-close", click: () => $$("receipt_window").close() }
+      ]
+    },
+    body: {
+      rows: [
+        {
+          template: receiptContent,
+          autoheight: true,
+          scroll: "y"
+        },
+        {
+          view: "toolbar",
+          css: "no-print",
+          padding: 10,
+          cols: [
+            {
+              view: "button",
+              value: "🖨️ Cetak Struk (Print)",
+              css: "webix_primary",
+              click: () => window.print()
+            },
+            {
+              view: "button",
+              value: "➕ Transaksi Baru",
+              click: () => $$("receipt_window").close()
+            }
+          ]
+        }
+      ]
+    }
+  }).show();
+}
+
+// Modal Riwayat Transaksi
+async function showSalesHistory() {
+  try {
+    const txs = await apiCall("/transactions?limit=30");
+
+    if ($$("history_window")) $$("history_window").destructor();
+
+    webix.ui({
+      view: "window",
+      id: "history_window",
+      modal: true,
+      position: "center",
+      width: 820,
+      height: 520,
+      head: {
+        view: "toolbar",
+        cols: [
+          { view: "label", label: "📜 Riwayat Penjualan Kasir" },
+          { view: "icon", icon: "wxi-close", click: () => $$("history_window").close() }
+        ]
+      },
+      body: {
+        rows: [
+          {
+            view: "datatable",
+            id: "history_table",
+            data: txs,
+            select: "row",
+            columns: [
+              { id: "no_faktur", header: "No. Faktur", width: 220, css: "isbn-text" },
+              { id: "created_at", header: "Waktu Transaksi", width: 170, template: obj => new Date(obj.created_at).toLocaleString("id-ID") },
+              { id: "items", header: "Item", width: 80, template: obj => (obj.items || []).length + " judul" },
+              { id: "metode_pembayaran", header: "Metode", width: 90, template: obj => '<span class="category-tag">' + (obj.metode_pembayaran || "").toUpperCase() + '</span>' },
+              { id: "total", header: "Total", width: 130, template: obj => '<span class="price-text">' + formatRupiah(obj.total) + '</span>' },
+              {
+                id: "action",
+                header: "Aksi",
+                width: 90,
+                template: () => '<span class="action-btn" style="color:#4f46e5; font-weight:700;">Lihat Struk ↗</span>'
+              }
+            ],
+            on: {
+              onItemClick: function(id) {
+                const row = this.getItem(id);
+                if (row) {
+                  $$("history_window").close();
+                  showReceiptModal(row);
+                }
+              }
+            }
+          }
+        ]
+      }
+    }).show();
+  } catch (err) {
+    webix.message({ type: "error", text: "Gagal memuat riwayat: " + err.message });
+  }
+}
+
+// Live Clock
+function startLiveClock() {
+  function update() {
+    const clock = $$("live_clock");
+    if (clock) {
+      const now = new Date();
+      clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    }
+  }
+  update();
+  setInterval(update, 1000);
+}
+
+// Webix Ready
+webix.ready(function() {
+  webix.ui({
+    id: "main_layout",
+    rows: [
+      // Top Navigation Header
+      {
+        view: "toolbar",
+        height: 54,
+        css: "app-header",
+        cols: [
+          {
+            view: "label",
+            autowidth: true,
+            label: '<span class="brand-title">📚 BookPOS <span class="brand-badge">MVP</span></span>'
+          },
+          { width: 15 },
+          {
+            view: "button",
+            value: "🛒 Kasir (POS)",
+            css: "nav-btn active",
+            autowidth: true
+          },
+          {
+            view: "button",
+            value: "📦 Master Data Buku",
+            css: "nav-btn",
+            autowidth: true,
+            click: () => window.location.href = "master.html"
+          },
+          {},
+          {
+            id: "db_status_pill",
+            view: "template",
+            borderless: true,
+            width: 220,
+            template: '<span class="status-pill status-demo">Mengecek DB...</span>'
+          },
+          {
+            id: "user_info_label",
+            view: "label",
+            autowidth: true,
+            label: '👤 ' + currentUser.nama + ' (' + currentUser.role + ')',
+            css: "user-tag"
+          },
+          {
+            id: "live_clock",
+            view: "label",
+            autowidth: true,
+            label: "",
+            css: "clock-text"
+          },
+          { width: 6 },
+          {
+            view: "button",
+            value: "📜 Riwayat Penjualan",
+            autowidth: true,
+            click: showSalesHistory
+          }
+        ]
+      },
+
+      // Main Layout 2 Kolom
+      {
+        cols: [
+          // Kolom Kiri: Katalog & Barcode Search
+          {
+            gravity: 1.4,
+            rows: [
+              // Search Toolbar
+              {
+                view: "toolbar",
+                padding: 10,
+                cols: [
+                  {
+                    view: "text",
+                    id: "search_input",
+                    placeholder: "🔍 Scan Barcode/ISBN atau cari Judul / Penulis... (Tekan Enter)",
+                    on: {
+                      onEnter: function() {
+                        const val = this.getValue().trim();
+                        const cleaned = cleanISBN(val);
+                        // Cek kecocokan tepat ISBN
+                        const exact = allBooks.find(b => b.isbn === cleaned || cleanISBN(b.isbn) === cleaned);
+                        if (exact) {
+                          addToCart(exact);
+                          this.setValue("");
+                        } else {
+                          loadCatalog();
+                        }
+                      }
+                    }
+                  },
+                  { width: 10 },
+                  {
+                    view: "select",
+                    id: "category_filter",
+                    width: 170,
+                    options: [{ id: "all", value: "Semua Kategori" }],
+                    on: {
+                      onChange: () => loadCatalog()
+                    }
+                  },
+                  { width: 6 },
+                  {
+                    view: "button",
+                    value: "Cari",
+                    width: 80,
+                    css: "webix_primary",
+                    click: () => loadCatalog()
+                  },
+                  {
+                    view: "button",
+                    value: "Reset",
+                    width: 75,
+                    click: () => {
+                      $$("search_input").setValue("");
+                      $$("category_filter").setValue("all");
+                      loadCatalog();
+                    }
+                  }
+                ]
+              },
+
+              // Tabel Katalog Buku
+              {
+                view: "datatable",
+                id: "catalog_table",
+                select: "row",
+                rowHeight: 48,
+                columns: [
+                  {
+                    id: "isbn",
+                    header: "ISBN (Barcode)",
+                    width: 145,
+                    template: obj => '<span class="isbn-text">' + obj.isbn + '</span>'
+                  },
+                  {
+                    id: "judul",
+                    header: "Judul Buku & Penulis",
+                    fillspace: true,
+                    template: obj => 
+                      '<div style="line-height:1.2; padding:4px 0;">' +
+                        '<div style="font-weight:700; color:#0f172a;">' + obj.judul + '</div>' +
+                        '<div style="font-size:11px; color:#64748b;">oleh ' + obj.penulis + (obj.penerbit ? ' • ' + obj.penerbit : '') + '</div>' +
+                      '</div>'
+                  },
+                  {
+                    id: "kategori_nama",
+                    header: "Kategori",
+                    width: 120,
+                    template: obj => '<span class="category-tag">' + (obj.kategori_nama || "-") + '</span>'
+                  },
+                  {
+                    id: "harga_jual",
+                    header: "Harga",
+                    width: 110,
+                    template: obj => '<span class="price-text">' + formatRupiah(obj.harga_jual) + '</span>'
+                  },
+                  {
+                    id: "stok",
+                    header: "Stok",
+                    width: 110,
+                    template: obj => {
+                      if (obj.stok <= 0) return '<span class="stock-badge stock-out">Habis</span>';
+                      if (obj.stok <= 5) return '<span class="stock-badge stock-low">Sisa ' + obj.stok + '</span>';
+                      return '<span class="stock-badge stock-in">' + obj.stok + ' Eks</span>';
+                    }
+                  },
+                  {
+                    id: "action",
+                    header: "Aksi",
+                    width: 90,
+                    template: obj => {
+                      if (obj.stok <= 0) {
+                        return '<button disabled style="opacity:0.4; font-size:11px; padding:3px 8px; border-radius:4px;">Habis</button>';
+                      }
+                      return '<button class="action-btn add-cart">+ Beli</button>';
+                    }
+                  }
+                ],
+                onClick: {
+                  "add-cart": function(e, id) {
+                    const row = this.getItem(id);
+                    addToCart(row);
+                    return false;
+                  }
+                },
+                on: {
+                  onItemDblClick: function(id) {
+                    const row = this.getItem(id);
+                    addToCart(row);
+                  }
+                }
+              }
+            ]
+          },
+
+          // Kolom Kanan: Keranjang Belanja & Pembayaran
+          {
+            gravity: 1,
+            css: "summary-card",
+            rows: [
+              // Header Keranjang
+              {
+                view: "toolbar",
+                height: 44,
+                cols: [
+                  {
+                    id: "cart_header_label",
+                    view: "label",
+                    label: "🛒 Keranjang (0 item)",
+                    css: "cart-header-title"
+                  },
+                  {},
+                  {
+                    view: "button",
+                    value: "Kosongkan",
+                    width: 95,
+                    css: "webix_danger",
+                    click: clearCart
+                  }
+                ]
+              },
+
+              // Tabel Item Keranjang
+              {
+                view: "datatable",
+                id: "cart_table",
+                height: 240,
+                rowHeight: 40,
+                columns: [
+                  { id: "judul", header: "Judul Buku", fillspace: true, template: obj => '<b>' + obj.judul + '</b>' },
+                  { id: "harga_jual", header: "Harga", width: 90, template: obj => formatRupiah(obj.harga_jual) },
+                  {
+                    id: "qty",
+                    header: "Qty",
+                    width: 95,
+                    template: obj => 
+                      '<div style="display:flex; align-items:center; gap:4px;">' +
+                        '<button class="action-btn qty-minus" style="padding:1px 6px;">-</button>' +
+                        '<span style="font-weight:700; width:20px; text-align:center;">' + obj.qty + '</span>' +
+                        '<button class="action-btn qty-plus" style="padding:1px 6px;">+</button>' +
+                      '</div>'
+                  },
+                  { id: "subtotal", header: "Subtotal", width: 105, template: obj => '<b style="color:#0f172a;">' + formatRupiah(obj.subtotal) + '</b>' },
+                  {
+                    id: "delete",
+                    header: "",
+                    width: 36,
+                    template: () => '<span class="action-btn del" title="Hapus">✕</span>'
+                  }
+                ],
+                onClick: {
+                  "qty-minus": function(e, id) {
+                    updateCartQty(id.row, -1);
+                    return false;
+                  },
+                  "qty-plus": function(e, id) {
+                    updateCartQty(id.row, 1);
+                    return false;
+                  },
+                  "del": function(e, id) {
+                    removeCartItem(id.row);
+                    return false;
+                  }
+                }
+              },
+
+              // Banner Total Tagihan
+              {
+                id: "total_display",
+                view: "template",
+                height: 100,
+                borderless: true,
+                template: 
+                  '<div class="total-due-box">' +
+                    '<div class="total-due-label">Total Tagihan</div>' +
+                    '<div class="total-due-amount">Rp 0</div>' +
+                    '<div style="font-size:11px; margin-top:4px; opacity:0.85;">Keranjang masih kosong</div>' +
+                  '</div>'
+              },
+
+              // Formulir Pembayaran
+              {
+                view: "form",
+                id: "payment_form",
+                padding: 10,
+                elements: [
+                  {
+                    view: "segmented",
+                    id: "payment_method",
+                    value: "tunai",
+                    options: [
+                      { id: "tunai", value: "💵 Tunai" },
+                      { id: "kartu", value: "💳 Kartu Debit/Kredit" },
+                      { id: "qris", value: "📱 QRIS" }
+                    ],
+                    on: {
+                      onChange: () => updateChangeDue()
+                    }
+                  },
+                  {
+                    cols: [
+                      {
+                        view: "text",
+                        id: "cash_input",
+                        label: "Uang Diterima (Rp):",
+                        labelWidth: 140,
+                        placeholder: "0",
+                        keyPressTimeout: 100,
+                        on: {
+                          onTimedKeyPress: () => updateChangeDue(),
+                          onEnter: () => processCheckout()
+                        }
+                      },
+                      { width: 10 },
+                      {
+                        id: "change_due_label",
+                        view: "template",
+                        borderless: true,
+                        width: 150,
+                        template: '<div style="font-size:11px; color:#64748b;">Kembalian:<br><b style="font-size:14px; color:#0f172a;">Rp 0</b></div>'
+                      }
+                    ]
+                  },
+                  // Shortcut Nominal Cepat Rupiah
+                  {
+                    cols: [
+                      { view: "button", value: "Uang Pas", css: "quick-cash-btn", click: () => setQuickCash("pas") },
+                      { view: "button", value: "50 Ribu", css: "quick-cash-btn", click: () => setQuickCash(50000) },
+                      { view: "button", value: "100 Ribu", css: "quick-cash-btn", click: () => setQuickCash(100000) },
+                      { view: "button", value: "200 Ribu", css: "quick-cash-btn", click: () => setQuickCash(200000) },
+                      { view: "button", value: "500 Ribu", css: "quick-cash-btn", click: () => setQuickCash(500000) }
+                    ]
+                  },
+                  { height: 8 },
+                  {
+                    id: "btn_checkout",
+                    view: "button",
+                    value: "💳 BAYAR & CETAK STRUK (F9)",
+                    height: 48,
+                    css: "pay-btn",
+                    click: processCheckout
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  });
+
+  // Shortcut F9 untuk bayar
+  window.addEventListener("keydown", function(e) {
+    if (e.key === "F9") {
+      e.preventDefault();
+      processCheckout();
+    }
+  });
+
+  // Init Data
+  startLiveClock();
+  checkHealth();
+  loadCategories();
+  loadCatalog();
+  renderCart();
+});
+</script>
+</body>
+</html>
