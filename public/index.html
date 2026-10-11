@@ -545,6 +545,7 @@
                 value: "📦 Master Data Buku",
                 css: "nav-btn",
                 autowidth: true,
+                hidden: currentUser.role !== "admin",
                 click: () => window.location.href = "master.html"
               },
               ...(currentUser.role === "admin" ? [{
