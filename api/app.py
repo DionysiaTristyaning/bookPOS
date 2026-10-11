@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import uuid
 from datetime import datetime
@@ -7,14 +8,32 @@ from flask_cors import CORS
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from api.database import (
-    get_db,
-    get_connection_status,
-    serialize_doc,
-    serialize_docs,
-    normalize_isbn,
-    slugify
-)
+# Ensure project root is in sys.path
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+API_DIR = os.path.dirname(__file__)
+if API_DIR not in sys.path:
+    sys.path.insert(0, API_DIR)
+
+try:
+    from api.database import (
+        get_db,
+        get_connection_status,
+        serialize_doc,
+        serialize_docs,
+        normalize_isbn,
+        slugify
+    )
+except ImportError:
+    from database import (
+        get_db,
+        get_connection_status,
+        serialize_doc,
+        serialize_docs,
+        normalize_isbn,
+        slugify
+    )
 
 app = Flask(__name__)
 CORS(app)
@@ -1305,11 +1324,16 @@ def serve_static(filename):
     return jsonify({"error": f"Path /{filename} tidak ditemukan"}), 404
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     port = int(os.getenv("PORT", 5000))
-    print(f"\n==========================================")
-    print(f" 📚 BookPOS Server Berjalan pada http://127.0.0.1:{port}")
+    print("\n==========================================")
+    print(f" [BookPOS] Server Berjalan pada http://127.0.0.1:{port}")
     print(f" - Kasir / POS:       http://127.0.0.1:{port}/")
     print(f" - Master Data Buku:  http://127.0.0.1:{port}/master.html")
     print(f" - Cek Status API:    http://127.0.0.1:{port}/api/health")
-    print(f"==========================================\n")
+    print("==========================================\n")
     app.run(host="0.0.0.0", port=port, debug=True)
