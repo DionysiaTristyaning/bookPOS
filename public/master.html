@@ -704,6 +704,13 @@
                 autowidth: true,
                 css: "webix_primary",
                 click: openAddBookModal
+              },
+              { width: 6 },
+              {
+                view: "button",
+                value: "Logout",
+                autowidth: true,
+                click: () => Auth.logout()
               }
             ]
           },
