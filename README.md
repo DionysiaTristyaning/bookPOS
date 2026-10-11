@@ -1,4 +1,4 @@
-# 📚 BookPOS - Point of Sale & Book Inventory Management MVP
+# 📚 BookPOS - Point of Sale & Book Inventory Management System
 
 Aplikasi web Kasir (Point of Sale) dan Manajemen Inventaris Buku yang disesuaikan penuh dengan **Dokumen Desain Skema MongoDB (Modul A: Master Data)** pada [`SkemaUserDanBuku.md`](./SkemaUserDanBuku.md).
 
