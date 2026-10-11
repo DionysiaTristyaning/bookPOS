@@ -15,6 +15,12 @@
 <body>
   <script src="/auth.js"></script>
   <script>
+    // Role Guard: Hanya Admin yang berhak mengakses halaman Master Data
+    if (!Auth.user || Auth.user.role !== "admin") {
+      alert("Akses Ditolak: Halaman Master Data hanya dapat diakses oleh Administrator.");
+      location.replace("/");
+    }
+
     let editingBookId = null;
     let categoriesList = [];
 
@@ -240,7 +246,7 @@
           await apiCall("/books", "POST", values);
           webix.message({ type: "success", text: "Buku berhasil ditambahkan!" });
         }
-        $$("book_window").close();
+        $$("book_window").hide();
         loadBooks();
       } catch (err) {
         // Sesuai Aturan 67: Jika ISBN pernah dihapus, tawarkan opsi reaktivasi
@@ -253,7 +259,7 @@
             callback: async function (res) {
               if (res) {
                 await restoreBook(err.data.existing_id, err.data.existing_judul);
-                $$("book_window").close();
+                $$("book_window").hide();
               }
             }
           });
@@ -707,6 +713,14 @@
               },
               { width: 6 },
               {
+                id: "user_info_label",
+                view: "label",
+                autowidth: true,
+                label: '👤 ' + (Auth.user?.nama || "Admin") + ' (' + (Auth.user?.role || "admin") + ')',
+                css: "user-tag"
+              },
+              { width: 6 },
+              {
                 view: "button",
                 value: "Logout",
                 autowidth: true,
@@ -917,7 +931,7 @@
           view: "toolbar",
           cols: [
             { id: "book_modal_title", view: "label", label: "Tambah Buku Baru" },
-            { view: "icon", icon: "wxi-close", click: () => $$("book_window").close() }
+            { view: "icon", icon: "wxi-close", click: () => $$("book_window").hide() }
           ]
         },
         body: {
@@ -960,7 +974,7 @@
             {
               cols: [
                 { view: "button", value: "Simpan Buku", css: "webix_primary", click: saveBook },
-                { view: "button", value: "Batal", click: () => $$("book_window").close() }
+                { view: "button", value: "Batal", click: () => $$("book_window").hide() }
               ]
             }
           ]
