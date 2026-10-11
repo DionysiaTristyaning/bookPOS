@@ -1,6 +1,6 @@
-# Desain Skema Dokumen MongoDB: Modul A (Master Data)
+# Desain Skema Dokumen MongoDB: Modul A (Master Data) dan Modul Transaksi
 
-Database: `nanti namanya` | Koleksi: `books`, `categories`, `users`
+Database: `nanti namanya` | Koleksi: `books`, `categories`, `users`, `transactions`
 
 ## 1. Koleksi `books`
 
@@ -129,3 +129,76 @@ Kategori **dilarang dihapus** selama masih dirujuk oleh buku, termasuk buku nona
 - Password disimpan sebagai hash, tidak pernah sebagai teks asli.
 - Pegawai yang keluar dinonaktifkan (`aktif: false`), bukan dihapus, supaya riwayat transaksi tetap merujuk ke user yang valid.
 - Tidak ada registrasi publik: akun dibuat oleh Admin. Admin pertama dibuat lewat script seed yang dijalankan sekali.
+
+## 4. Koleksi `transactions`
+
+Satu dokumen = satu nota penjualan. Dokumen tidak pernah diubah atau dihapus setelah dibuat, karena menjadi arsip penjualan.
+
+### Kamus Data
+| Field | Tipe | Wajib | Keterangan |
+|---|---|---|---|
+| _id | ObjectId | otomatis | |
+| no_faktur | string | ya | format `INV-YYYYMMDDHHMM-XXXXXX`, unik |
+| items | array | ya | salinan data buku saat dijual (lihat di bawah) |
+| subtotal | integer | ya | jumlah harga seluruh item, rupiah |
+| tarif_pajak | number | ya | tarif saat transaksi, mis. `0.11`; `0` jika tanpa pajak |
+| pajak | integer | ya | dibulatkan ke rupiah, dihitung server |
+| total | integer | ya | `subtotal + pajak` |
+| metode_pembayaran | string | ya | `tunai`, `qris`, atau `debit` |
+| tunai_diterima | integer | ya | untuk non-tunai sama dengan `total` |
+| kembalian | integer | ya | `0` untuk non-tunai |
+| kasir_nama | string | ya | diambil dari token login |
+| created_at | string | ya | ISO 8601 zona WIB (+07:00) |
+
+Setiap elemen `items`:
+| Field | Tipe | Keterangan |
+|---|---|---|
+| buku_id | string | rujukan ke `books._id` |
+| isbn | string | salinan saat dijual |
+| judul | string | salinan saat dijual |
+| penulis | string | salinan saat dijual |
+| harga_jual | integer | harga satuan saat dijual |
+| qty | integer | minimal 1 |
+| subtotal | integer | `harga_jual * qty` |
+
+### Contoh Struktur Dokumen
+```json
+{
+  "_id": "665f3e5a8a1b2c3d4e5f6c03",
+  "no_faktur": "INV-202610112145-A1B2C3",
+  "items": [
+    {
+      "buku_id": "665f1c2e8a1b2c3d4e5f6a01",
+      "isbn": "9786020000001",
+      "judul": "Laskar Pelangi",
+      "penulis": "Andrea Hirata",
+      "harga_jual": 85000,
+      "qty": 2,
+      "subtotal": 170000
+    }
+  ],
+  "subtotal": 170000,
+  "tarif_pajak": 0,
+  "pajak": 0,
+  "total": 170000,
+  "metode_pembayaran": "tunai",
+  "tunai_diterima": 200000,
+  "kembalian": 30000,
+  "kasir_nama": "kasir01",
+  "created_at": "2026-10-11T21:45:00+07:00"
+}
+```
+
+### Index (disarankan, dibuat manual di Atlas)
+| Field | Jenis | Tujuan |
+|---|---|---|
+| no_faktur | unik | pencarian nota, mencegah nomor ganda |
+| created_at | biasa | laporan per rentang tanggal dan urutan terbaru |
+
+### Keputusan
+- Harga selalu diambil dari koleksi `books` saat checkout, bukan dari klien.
+- Item dengan buku yang sama digabung menjadi satu baris.
+- Pajak, total, dan kembalian dihitung di server; angka dari klien tidak dipercaya.
+- Stok dikurangi secara atomik (`stok >= qty`). Jika penyimpanan nota gagal, stok dikembalikan.
+- Judul, penulis, dan harga disalin ke nota agar riwayat tetap benar walau buku kemudian diedit atau dinonaktifkan.
+- `created_at` memakai zona WIB agar laporan harian sesuai hari kerja toko.
