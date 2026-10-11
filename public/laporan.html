@@ -1,0 +1,187 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laporan Transaksi - BookPOS</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2937; }
+  header { background: #1e293b; color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header a { color: #cbd5e1; text-decoration: none; font-size: 14px; }
+  main { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
+  .filter { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 16px; }
+  .filter label { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  input, button { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+  button { background: #2563eb; color: #fff; border: 0; cursor: pointer; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card small { color: #64748b; }
+  .card strong { display: block; font-size: 20px; margin-top: 4px; }
+  section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-x: auto; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e5e7eb; }
+  td.r, th.r { text-align: right; }
+  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
+  .bar-row .tgl { width: 90px; color: #64748b; }
+  .bar { height: 14px; background: #2563eb; border-radius: 3px; min-width: 1px; }
+  #pesan { color: #b91c1c; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Laporan Transaksi</strong>
+  <a href="/">Kembali ke Kasir</a>
+</header>
+<main>
+  <div class="filter">
+    <label>Dari <input type="date" id="dari"></label>
+    <label>Sampai <input type="date" id="sampai"></label>
+    <button id="btnTampil">Tampilkan</button>
+  </div>
+  <div id="pesan"></div>
+
+  <div class="cards">
+    <div class="card"><small>Jumlah transaksi</small><strong id="kTx">-</strong></div>
+    <div class="card"><small>Buku terjual</small><strong id="kBuku">-</strong></div>
+    <div class="card"><small>Omzet (sebelum pajak)</small><strong id="kOmzet">-</strong></div>
+    <div class="card"><small>Pajak</small><strong id="kPajak">-</strong></div>
+    <div class="card"><small>Total penerimaan</small><strong id="kTotal">-</strong></div>
+  </div>
+
+  <section>
+    <h2>Penjualan per hari</h2>
+    <div id="perHari"></div>
+  </section>
+
+  <section>
+    <h2>Per metode pembayaran</h2>
+    <table>
+      <thead><tr><th>Metode</th><th class="r">Transaksi</th><th class="r">Total</th></tr></thead>
+      <tbody id="perMetode"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>5 buku terlaris</h2>
+    <table>
+      <thead><tr><th>Judul</th><th>ISBN</th><th class="r">Terjual</th><th class="r">Pendapatan</th></tr></thead>
+      <tbody id="terlaris"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>10 transaksi terbaru</h2>
+    <table>
+      <thead><tr><th>No. Faktur</th><th>Waktu</th><th>Metode</th><th>Kasir</th><th class="r">Total</th></tr></thead>
+      <tbody id="terbaru"></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="pos-helper.js"></script>
+<script>
+  (function () {
+    let user = null;
+    try { user = JSON.parse(localStorage.getItem("user")); } catch (e) {}
+    if (!POS.getToken() || !user) {
+      location.replace("/login.html");
+    } else if (user.role !== "admin") {
+      location.replace("/");
+    }
+  })();
+
+  const $ = (id) => document.getElementById(id);
+  const rp = POS.rupiah;
+
+  function isoLokal(d) {
+    const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return z.toISOString().slice(0, 10);
+  }
+
+  function siapkanTabel(tbody) {
+    tbody.innerHTML = "";
+    return (cells) => {
+      const tr = document.createElement("tr");
+      cells.forEach(([teks, kanan]) => {
+        const td = document.createElement("td");
+        td.textContent = teks;
+        if (kanan) td.className = "r";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    };
+  }
+
+  async function muat() {
+    $("pesan").textContent = "";
+    const url = "/api/reports/summary?dari=" + $("dari").value + "&sampai=" + $("sampai").value;
+    let data;
+    try {
+      const res = await fetch(url, { headers: POS.authHeaders() });
+      data = await res.json();
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        location.replace("/login.html");
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Gagal memuat laporan");
+    } catch (e) {
+      $("pesan").textContent = e.message;
+      return;
+    }
+
+    const r = data.ringkasan;
+    $("kTx").textContent = r.jumlah_transaksi;
+    $("kBuku").textContent = r.buku_terjual;
+    $("kOmzet").textContent = rp(r.omzet);
+    $("kPajak").textContent = rp(r.pajak);
+    $("kTotal").textContent = rp(r.total);
+
+    const maks = Math.max(1, ...data.per_hari.map((h) => h.total));
+    $("perHari").innerHTML = "";
+    data.per_hari.forEach((h) => {
+      const row = document.createElement("div");
+      row.className = "bar-row";
+      const tgl = document.createElement("span");
+      tgl.className = "tgl";
+      tgl.textContent = h.tanggal;
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.width = (h.total / maks) * 60 + "%";
+      const ket = document.createElement("span");
+      ket.textContent = rp(h.total) + " (" + h.jumlah + " transaksi)";
+      row.append(tgl, bar, ket);
+      $("perHari").appendChild(row);
+    });
+
+    let tambah = siapkanTabel($("perMetode"));
+    data.per_metode.forEach((m) => tambah([[m.metode], [m.jumlah, 1], [rp(m.total), 1]]));
+
+    tambah = siapkanTabel($("terlaris"));
+    data.terlaris.forEach((b) => tambah([[b.judul], [b.isbn], [b.qty, 1], [rp(b.pendapatan), 1]]));
+
+    tambah = siapkanTabel($("terbaru"));
+    data.terbaru.forEach((t) =>
+      tambah([
+        [t.no_faktur],
+        [String(t.created_at).replace("T", " ").slice(0, 16)],
+        [t.metode_pembayaran],
+        [t.kasir_nama],
+        [rp(t.total), 1],
+      ])
+    );
+  }
+
+  const hariIni = new Date();
+  const tujuhHari = new Date(hariIni.getTime() - 6 * 86400000);
+  $("dari").value = isoLokal(tujuhHari);
+  $("sampai").value = isoLokal(hariIni);
+  $("btnTampil").addEventListener("click", muat);
+  muat();
+</script>
+</body>
+</html>
+```
