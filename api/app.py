@@ -213,6 +213,15 @@ def is_live_db():
     status = get_connection_status()
     return status.get("connected", False)
 
+def parse_int_safe(val, default=0):
+    """Sanitasi integer rupiah: menangani int, float, atau string dengan titik ribuan."""
+    if val is None or val == "":
+        return default
+    if isinstance(val, (int, float)):
+        return int(val)
+    cleaned = re.sub(r"[^\d]", "", str(val).strip())
+    return int(cleaned) if cleaned else default
+
 # ----------------- KATEGORI MAPPING HELPER -----------------
 def get_categories_map():
     if is_live_db():
@@ -683,13 +692,13 @@ def create_book():
 
     # Harga integer rupiah tanpa desimal (Aturan 18, 19, 54)
     try:
-        harga_beli = int(data.get("harga_beli", 0))
-        harga_jual = int(data.get("harga_jual", 0))
+        harga_beli = parse_int_safe(data.get("harga_beli", 0))
+        harga_jual = parse_int_safe(data.get("harga_jual", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Harga beli dan harga jual harus berupa bilangan bulat (integer Rupiah)"}), 400
 
     try:
-        stok = int(data.get("stok", 0))
+        stok = parse_int_safe(data.get("stok", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Stok harus berupa bilangan bulat (minimal 0)"}), 400
 
@@ -799,8 +808,8 @@ def update_book(book_id):
         return jsonify({"error": "Kategori wajib dipilih"}), 400
 
     try:
-        harga_beli = int(data.get("harga_beli", 0))
-        harga_jual = int(data.get("harga_jual", 0))
+        harga_beli = parse_int_safe(data.get("harga_beli", 0))
+        harga_jual = parse_int_safe(data.get("harga_jual", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Harga beli dan harga jual harus berupa bilangan bulat (integer Rupiah)"}), 400
 

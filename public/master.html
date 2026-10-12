@@ -32,6 +32,13 @@
       return String(str || "").replace(/[^0-9X]/gi, "").toUpperCase();
     }
 
+    // Sanitasi Angka (membersihkan titik ribuan, spasi, 'Rp', dan karakter non-digit)
+    function cleanNumber(val) {
+      if (typeof val === "number") return Math.round(val);
+      const clean = String(val ?? "").replace(/\D/g, "");
+      return parseInt(clean, 10) || 0;
+    }
+
     // API Helper
     async function apiCall(endpoint, method = "GET", body = null) {
       const options = {
@@ -242,10 +249,10 @@
 
       const values = form.getValues();
       values.isbn = cleanISBN(values.isbn);
-      values.harga_beli = parseInt(values.harga_beli) || 0;
-      values.harga_jual = parseInt(values.harga_jual) || 0;
+      values.harga_beli = cleanNumber(values.harga_beli);
+      values.harga_jual = cleanNumber(values.harga_jual);
       if (!editingBookId) {
-        values.stok = parseInt(values.stok) || 0;
+        values.stok = cleanNumber(values.stok);
       }
 
       try {
@@ -366,7 +373,7 @@
               label: "Jumlah:",
               labelWidth: 100,
               value: "5",
-              validate: webix.rules.isNumber
+              validate: val => cleanNumber(val) > 0
             },
             {
               view: "text",
@@ -383,7 +390,7 @@
                   value: "Simpan Stok",
                   css: "webix_primary",
                   click: async function () {
-                    const qtyVal = parseInt($$("adj_qty").getValue()) || 0;
+                    const qtyVal = cleanNumber($$("adj_qty").getValue());
                     if (qtyVal <= 0) {
                       webix.message({ type: "error", text: "Jumlah harus berupa angka positif" });
                       return;
@@ -1004,8 +1011,8 @@
             judul: webix.rules.isNotEmpty,
             penulis: webix.rules.isNotEmpty,
             kategori_id: webix.rules.isNotEmpty,
-            harga_beli: webix.rules.isNumber,
-            harga_jual: webix.rules.isNumber
+            harga_beli: val => cleanNumber(val) >= 0 && String(val || "").trim() !== "",
+            harga_jual: val => cleanNumber(val) >= 0 && String(val || "").trim() !== ""
           },
           elements: [
             { view: "text", name: "isbn", label: "ISBN-13:", labelWidth: 120, placeholder: "e.g. 9786020000001 (tanpa spasi/strip)", required: true },
