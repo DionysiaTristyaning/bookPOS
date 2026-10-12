@@ -173,6 +173,17 @@ _in_memory_transactions = []
 # Blueprint API
 api_bp = Blueprint("api_bp", __name__)
 
+JWT_SECRET = os.getenv("JWT_SECRET", "bookpos-default-jwt-secret-key-change-in-prod")
+
+def get_auth_user():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    try:
+        return jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        return None
+
 def create_token(user):
     payload = {
         "sub": str(user["id"]),
@@ -180,7 +191,7 @@ def create_token(user):
         "role": user["role"],
         "exp": datetime.now(timezone.utc) + timedelta(hours=int(os.getenv("JWT_EXPIRES_HOURS", "8"))),
     }
-    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm="HS256")
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 
 def check_auth(*roles):
@@ -191,7 +202,7 @@ def check_auth(*roles):
     if not header.startswith("Bearer "):
         return jsonify({"error": "Login diperlukan"}), 401
     try:
-        payload = jwt.decode(header[7:], os.environ["JWT_SECRET"], algorithms=["HS256"])
+        payload = jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
     except jwt.InvalidTokenError:
         return jsonify({"error": "Token tidak valid atau kedaluwarsa"}), 401
     if roles and payload.get("role") not in roles:
@@ -1082,6 +1093,7 @@ def toggle_user_active(user_id):
     if denied:
         return denied
         
+    current_user = get_auth_user()
     now = datetime.now()
     if is_live_db():
         db = get_db()
@@ -1092,6 +1104,8 @@ def toggle_user_active(user_id):
         user = db.users.find_one({"_id": oid})
         if not user:
             return jsonify({"error": "User tidak ditemukan"}), 404
+        if current_user and (str(current_user.get("sub")) == str(user["_id"]) or current_user.get("username") == user.get("username")):
+            return jsonify({"error": "Anda tidak dapat menonaktifkan akun sendiri"}), 400
 
         new_status = not user.get("aktif", True)
         db.users.update_one(
@@ -1104,6 +1118,9 @@ def toggle_user_active(user_id):
         user = next((u for u in _in_memory_users if u["id"] == user_id), None)
         if not user:
             return jsonify({"error": "User tidak ditemukan"}), 404
+        if current_user and (str(current_user.get("sub")) == str(user["id"]) or current_user.get("username") == user.get("username")):
+            return jsonify({"error": "Anda tidak dapat menonaktifkan akun sendiri"}), 400
+
         user["aktif"] = not user.get("aktif", True)
         user["updated_at"] = now.isoformat()
         resp = dict(user)

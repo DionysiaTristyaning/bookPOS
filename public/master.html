@@ -75,6 +75,19 @@
       }
     }
 
+    // Live Clock
+    function startLiveClock() {
+      function update() {
+        const clock = $$("live_clock");
+        if (clock) {
+          const now = new Date();
+          clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        }
+      }
+      update();
+      setInterval(update, 1000);
+    }
+
     // Muat Kategori ke Options
     async function loadCategories() {
       try {
@@ -718,6 +731,13 @@
                 autowidth: true,
                 label: '👤 ' + (Auth.user?.nama || "Admin") + ' (' + (Auth.user?.role || "admin") + ')',
                 css: "user-tag"
+              },
+              {
+                id: "live_clock",
+                view: "label",
+                autowidth: true,
+                label: "",
+                css: "clock-text"
               },
               { width: 6 },
               {
