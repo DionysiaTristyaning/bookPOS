@@ -15,11 +15,8 @@
 <body>
   <script src="/auth.js"></script>
   <script>
-    // Role Guard: Hanya Admin yang berhak mengakses halaman Master Data
-    if (!Auth.user || Auth.user.role !== "admin") {
-      alert("Akses Ditolak: Halaman Master Data hanya dapat diakses oleh Administrator.");
-      location.replace("/");
-    }
+    // Role Guard: Halaman Master Data hanya untuk Administrator
+    if (Auth.user?.role !== "admin") location.replace("/");
 
     let editingBookId = null;
     let categoriesList = [];
@@ -660,6 +657,8 @@
 
     // ----------------- WEBIX UI READY -----------------
     webix.ready(function () {
+      if (Auth.user?.role !== "admin") return;
+
       webix.ui({
         id: "master_layout",
         rows: [
