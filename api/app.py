@@ -7,6 +7,8 @@ from flask import Flask, request, jsonify, send_from_directory, Blueprint
 from flask_cors import CORS
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta, timezone
+import jwt
 
 # Ensure project root is in sys.path
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -190,9 +192,54 @@ _in_memory_transactions = []
 # Blueprint API
 api_bp = Blueprint("api_bp", __name__)
 
+JWT_SECRET = os.getenv("JWT_SECRET", "bookpos-default-jwt-secret-key-change-in-prod")
+
+def get_auth_user():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    try:
+        return jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        return None
+
+def create_token(user):
+    payload = {
+        "sub": str(user["id"]),
+        "username": user["username"],
+        "role": user["role"],
+        "exp": datetime.now(timezone.utc) + timedelta(hours=int(os.getenv("JWT_EXPIRES_HOURS", "8"))),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def check_auth(*roles):
+    """Mengembalikan None kalau boleh, atau respons error kalau ditolak."""
+    if os.getenv("AUTH_REQUIRED") != "1":
+        return None  # saklar mati: perilaku lama
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return jsonify({"error": "Login diperlukan"}), 401
+    try:
+        payload = jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Token tidak valid atau kedaluwarsa"}), 401
+    if roles and payload.get("role") not in roles:
+        return jsonify({"error": "Akses ditolak"}), 403
+    return None
+
 def is_live_db():
     status = get_connection_status()
     return status.get("connected", False)
+
+def parse_int_safe(val, default=0):
+    """Sanitasi integer rupiah: menangani int, float, atau string dengan titik ribuan."""
+    if val is None or val == "":
+        return default
+    if isinstance(val, (int, float)):
+        return int(val)
+    cleaned = re.sub(r"[^\d]", "", str(val).strip())
+    return int(cleaned) if cleaned else default
 
 # ----------------- KATEGORI MAPPING HELPER -----------------
 def get_categories_map():
@@ -462,6 +509,10 @@ def seed_data():
 # ----------------- KOLEKSI: CATEGORIES -----------------
 @api_bp.route("/categories", methods=["GET"])
 def get_categories():
+    denied = check_auth()
+    if denied:
+        return denied
+
     if is_live_db():
         db = get_db()
         cats = list(db.categories.find().sort("nama", 1))
@@ -484,6 +535,10 @@ def get_categories():
 
 @api_bp.route("/categories", methods=["POST"])
 def create_category():
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     data = request.get_json() or {}
     nama = str(data.get("nama", "")).strip()
     if not nama:
@@ -513,6 +568,10 @@ def create_category():
 
 @api_bp.route("/categories/<cat_id>", methods=["PUT"])
 def update_category(cat_id):
+    denied = check_auth("admin")
+    if denied:
+        return denied
+        
     data = request.get_json() or {}
     nama = str(data.get("nama", "")).strip()
     if not nama:
@@ -550,6 +609,10 @@ def update_category(cat_id):
 def delete_category(cat_id):
     # Sesuai Aturan 93: "Kategori dilarang dihapus selama masih dirujuk oleh buku,
     # termasuk buku nonaktif."
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     if is_live_db():
         db = get_db()
         try:
@@ -584,6 +647,10 @@ def delete_category(cat_id):
 # ----------------- KOLEKSI: BOOKS -----------------
 @api_bp.route("/books", methods=["GET"])
 def get_books():
+    denied = check_auth()
+    if denied:
+        return denied
+
     search = request.args.get("search", "").strip()
     kategori_id = request.args.get("kategori_id", "").strip()
     status = request.args.get("status", "aktif").strip()  # "aktif", "nonaktif", "semua"
@@ -594,6 +661,10 @@ def get_books():
 
 @api_bp.route("/books/<book_id>", methods=["GET"])
 def get_book_by_id(book_id):
+    denied = check_auth()
+    if denied:
+        return denied
+    
     cat_map = get_categories_map()
     if is_live_db():
         db = get_db()
@@ -616,6 +687,9 @@ def get_book_by_id(book_id):
 
 @api_bp.route("/books", methods=["POST"])
 def create_book():
+    denied = check_auth("admin")
+    if denied:
+        return denied
     data = request.get_json() or {}
     
     # Normalisasi format ISBN di server (Aturan 13 & 52: ISBN-13 tanpa tanda hubung)
@@ -637,13 +711,13 @@ def create_book():
 
     # Harga integer rupiah tanpa desimal (Aturan 18, 19, 54)
     try:
-        harga_beli = int(data.get("harga_beli", 0))
-        harga_jual = int(data.get("harga_jual", 0))
+        harga_beli = parse_int_safe(data.get("harga_beli", 0))
+        harga_jual = parse_int_safe(data.get("harga_jual", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Harga beli dan harga jual harus berupa bilangan bulat (integer Rupiah)"}), 400
 
     try:
-        stok = int(data.get("stok", 0))
+        stok = parse_int_safe(data.get("stok", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Stok harus berupa bilangan bulat (minimal 0)"}), 400
 
@@ -730,6 +804,10 @@ def create_book():
 
 @api_bp.route("/books/<book_id>", methods=["PUT"])
 def update_book(book_id):
+    denied = check_auth("admin")
+    if denied:
+        return denied
+        
     data = request.get_json() or {}
 
     raw_isbn = str(data.get("isbn", "")).strip()
@@ -749,8 +827,8 @@ def update_book(book_id):
         return jsonify({"error": "Kategori wajib dipilih"}), 400
 
     try:
-        harga_beli = int(data.get("harga_beli", 0))
-        harga_jual = int(data.get("harga_jual", 0))
+        harga_beli = parse_int_safe(data.get("harga_beli", 0))
+        harga_jual = parse_int_safe(data.get("harga_jual", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Harga beli dan harga jual harus berupa bilangan bulat (integer Rupiah)"}), 400
 
@@ -811,6 +889,10 @@ def update_book(book_id):
 # SOFT DELETE BUKU (Aturan 21, 58-68)
 @api_bp.route("/books/<book_id>", methods=["DELETE"])
 def soft_delete_book(book_id):
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     now = datetime.now()
     if is_live_db():
         db = get_db()
@@ -846,6 +928,10 @@ def soft_delete_book(book_id):
 # AKTIFKAN KEMBALI BUKU (Aturan 67)
 @api_bp.route("/books/<book_id>/restore", methods=["POST"])
 def restore_book(book_id):
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     now = datetime.now()
     if is_live_db():
         db = get_db()
@@ -873,6 +959,10 @@ def restore_book(book_id):
 # PENYESUAIAN STOK MANUAL
 @api_bp.route("/books/adjust-stock", methods=["POST"])
 def adjust_stock():
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     data = request.get_json() or {}
     book_id = data.get("id")
     try:
@@ -942,7 +1032,7 @@ def login():
             return jsonify({"error": "Username atau password salah"}), 401
 
         user_data = serialize_doc(user, hide_password=True)
-        return jsonify({"success": True, "user": user_data})
+        return jsonify({"success": True, "user": user_data, "token": create_token(user_data)})
     else:
         user = next((u for u in _in_memory_users if u["username"] == username), None)
         if not user:
@@ -954,10 +1044,14 @@ def login():
 
         user_data = dict(user)
         del user_data["password_hash"]
-        return jsonify({"success": True, "user": user_data})
+        return jsonify({"success": True, "user": user_data, "token": create_token(user_data)})
 
 @api_bp.route("/users", methods=["GET"])
 def get_users():
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     if is_live_db():
         db = get_db()
         users = list(db.users.find().sort("nama", 1))
@@ -972,6 +1066,10 @@ def get_users():
 
 @api_bp.route("/users", methods=["POST"])
 def create_user():
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
     data = request.get_json() or {}
     username = str(data.get("username", "")).strip().lower()
     password = str(data.get("password", "")).strip()
@@ -1019,6 +1117,11 @@ def create_user():
 
 @api_bp.route("/users/<user_id>/toggle-active", methods=["POST"])
 def toggle_user_active(user_id):
+    denied = check_auth("admin")
+    if denied:
+        return denied
+        
+    current_user = get_auth_user()
     now = datetime.now()
     if is_live_db():
         db = get_db()
@@ -1029,6 +1132,8 @@ def toggle_user_active(user_id):
         user = db.users.find_one({"_id": oid})
         if not user:
             return jsonify({"error": "User tidak ditemukan"}), 404
+        if current_user and (str(current_user.get("sub")) == str(user["_id"]) or current_user.get("username") == user.get("username")):
+            return jsonify({"error": "Anda tidak dapat menonaktifkan akun sendiri"}), 400
 
         new_status = not user.get("aktif", True)
         db.users.update_one(
@@ -1041,6 +1146,9 @@ def toggle_user_active(user_id):
         user = next((u for u in _in_memory_users if u["id"] == user_id), None)
         if not user:
             return jsonify({"error": "User tidak ditemukan"}), 404
+        if current_user and (str(current_user.get("sub")) == str(user["id"]) or current_user.get("username") == user.get("username")):
+            return jsonify({"error": "Anda tidak dapat menonaktifkan akun sendiri"}), 400
+
         user["aktif"] = not user.get("aktif", True)
         user["updated_at"] = now.isoformat()
         resp = dict(user)

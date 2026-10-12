@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <form id="f" style="max-width:320px;margin:80px auto;display:grid;gap:10px">
+        <h2>Login</h2>
+        <input id="u" placeholder="Username" autocomplete="username" required>
+        <input id="p" type="password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit">Masuk</button>
+        <div id="msg" style="color:#c00"></div>
+    </form>
+
+    <script>
+        // Sudah login? Langsung masuk.
+        const token = localStorage.getItem("token");
+        if (token) {
+            let user;
+            try { user = JSON.parse(localStorage.getItem("user")); } catch { }
+            location.replace(user?.role === "admin" ? "/master.html" : "/");
+        }
+
+
+        document.getElementById("f").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById("msg");
+            msg.textContent = "";
+            try {
+                const res = await fetch("/api/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: document.getElementById("u").value,
+                        password: document.getElementById("p").value,
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) { msg.textContent = data.error || "Login gagal"; return; }
+
+                localStorage.setItem("token", data.token);
+                localStorage.setItem("user", JSON.stringify(data.user));
+                location.replace(data.user.role === "admin" ? "/master.html" : "/");
+            } catch (err) {
+                msg.textContent = "Tidak bisa menghubungi server";
+            }
+        });
+    </script>
+</body>
+
+</html>
