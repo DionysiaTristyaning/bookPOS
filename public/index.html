@@ -415,88 +415,6 @@
 
         if ($$("history_window")) $$("history_window").destructor();
 
-<<<<<<< HEAD
-    webix.ui({
-      view: "window",
-      id: "history_window",
-      modal: true,
-      position: "center",
-      width: 820,
-      height: 520,
-      head: {
-        view: "toolbar",
-        cols: [
-          { view: "label", label: "📜 Riwayat Penjualan Kasir" },
-          { view: "icon", icon: "wxi-close", click: () => $$("history_window").close() }
-        ]
-      },
-      body: {
-        rows: [
-          {
-            view: "datatable",
-            id: "history_table",
-            data: txs,
-            select: "row",
-            columns: [
-              { id: "no_faktur", header: "No. Faktur", width: 220, css: "isbn-text" },
-              { id: "created_at", header: "Waktu Transaksi", width: 170, template: obj => new Date(obj.created_at).toLocaleString("id-ID") },
-              { id: "items", header: "Item", width: 80, template: obj => (obj.items || []).length + " judul" },
-              { id: "metode_pembayaran", header: "Metode", width: 90, template: obj => '<span class="category-tag">' + (obj.metode_pembayaran || "").toUpperCase() + '</span>' },
-              { id: "total", header: "Total", width: 130, template: obj => '<span class="price-text">' + formatRupiah(obj.total) + '</span>' },
-              {
-                id: "action",
-                header: "Aksi",
-                width: 90,
-                template: () => '<span class="action-btn" style="color:#4f46e5; font-weight:700;">Lihat Struk ↗</span>'
-              }
-            ],
-            on: {
-              onItemClick: function(id) {
-                const row = this.getItem(id);
-                if (row) {
-                  $$("history_window").close();
-                  showReceiptModal(row);
-                }
-              }
-            }
-          }
-        ]
-      }
-    }).show();
-  } catch (err) {
-    webix.message({ type: "error", text: "Gagal memuat riwayat: " + err.message });
-  }
-}
-
-// Live Clock
-function startLiveClock() {
-  function update() {
-    const clock = $$("live_clock");
-    if (clock) {
-      const now = new Date();
-      clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    }
-  }
-  update();
-  setInterval(update, 1000);
-}
-
-// Webix Ready
-webix.ready(function() {
-  webix.ui({
-    id: "main_layout",
-    rows: [
-      // Top Navigation Header
-      {
-        view: "toolbar",
-        height: 54,
-        css: "app-header",
-        cols: [
-          {
-            view: "label",
-            autowidth: true,
-            label: '<span class="brand-title">📚 BookPOS</span>'
-=======
         webix.ui({
           view: "window",
           id: "history_window",
@@ -510,7 +428,6 @@ webix.ready(function() {
               { view: "label", label: "📜 Riwayat Penjualan Kasir" },
               { view: "icon", icon: "wxi-close", click: () => $$("history_window").close() }
             ]
->>>>>>> origin/branch1
           },
           body: {
             rows: [
