@@ -490,12 +490,42 @@
                 },
                 {
                   id: "actions",
-                  header: "Hapus",
-                  width: 80,
-                  template: () => '<span class="action-btn del cat-del-btn" title="Hapus Kategori">🗑️</span>'
+                  header: "Aksi",
+                  width: 95,
+                  template: () =>
+                    '<div style="display:flex; gap:6px;">' +
+                    '<span class="action-btn edit-btn cat-edit-btn" title="Ubah Nama Kategori">✏️</span>' +
+                    '<span class="action-btn del cat-del-btn" title="Hapus Kategori">🗑️</span>' +
+                    '</div>'
                 }
               ],
               onClick: {
+                "cat-edit-btn": function (e, id) {
+                  const cat = this.getItem(id);
+                  webix.prompt({
+                    title: "Ubah Nama Kategori",
+                    text: "Masukkan nama kategori baru:",
+                    ok: "Simpan",
+                    cancel: "Batal",
+                    value: cat.nama,
+                    callback: async function (result) {
+                      if (result && result.trim() && result.trim() !== cat.nama) {
+                        try {
+                          await apiCall("/categories/" + cat.id, "PUT", { nama: result.trim() });
+                          webix.message({ type: "success", text: "Nama kategori berhasil diperbarui!" });
+                          const refreshed = await apiCall("/categories");
+                          $$("cat_datatable").clearAll();
+                          $$("cat_datatable").parse(refreshed);
+                          loadCategories();
+                          loadBooks();
+                        } catch (err) {
+                          webix.message({ type: "error", text: err.message });
+                        }
+                      }
+                    }
+                  });
+                  return false;
+                },
                 "cat-del-btn": function (e, id) {
                   const cat = this.getItem(id);
                   // Aturan 93: Cek sebelum hapus
