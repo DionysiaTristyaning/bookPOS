@@ -395,10 +395,11 @@
               ]
             },
 
-            // POS Body: Catalog left + Cart right
+            // POS Body: Catalog left + Cart right — full height, no empty white space
             {
+              gravity: 1,
               cols: [
-                // LEFT: Catalog
+                // LEFT: Catalog (full height)
                 {
                   gravity: 1,
                   rows: [
@@ -425,6 +426,7 @@
                     },
                     {
                       view:"datatable", id:"catalog_table", select:"row", rowHeight:46,
+                      gravity: 1,
                       scroll:"y",
                       columns:[
                         { id:"isbn", header:"ISBN", width:130, template:o=>'<span class="isbn-text">'+o.isbn+'</span>' },
@@ -453,7 +455,7 @@
                   ]
                 },
 
-                // RIGHT: Cart + Payment — perfectly fitted in 1 screen, zero bottom overflow
+                // RIGHT: Cart + Payment — full height with comfortably raised pay button
                 {
                   width: 420,
                   borderless: false,
@@ -468,21 +470,21 @@
                         { view:"button", value:"Kosongkan", width:90, css:"webix_danger", click:clearCart }
                       ]
                     },
-                    // Cart items (fixed 140px, rowHeight 36)
+                    // Cart items (flexible gravity: 1 to fill available vertical space)
                     {
-                      view:"datatable", id:"cart_table", height:140, rowHeight:36,
+                      view:"datatable", id:"cart_table", gravity:1, minHeight:120, rowHeight:38,
                       scroll:"y",
                       columns:[
                         { id:"judul", header:"Buku", fillspace:true,
-                          template:o=>'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:36px;">'+o.judul+'</div>' },
+                          template:o=>'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:38px;">'+o.judul+'</div>' },
                         { id:"qty", header:"Qty", width:85,
-                          template:o=>'<div style="display:flex;align-items:center;justify-content:center;gap:2px;height:36px;">' +
+                          template:o=>'<div style="display:flex;align-items:center;justify-content:center;gap:2px;height:38px;">' +
                             '<button class="action-btn qty-minus" style="padding:1px 6px;border:1px solid #e2e8f0;border-radius:3px;">−</button>' +
                             '<span style="font-weight:700;width:20px;text-align:center;font-size:12px;">'+o.qty+'</span>' +
                             '<button class="action-btn qty-plus" style="padding:1px 6px;border:1px solid #e2e8f0;border-radius:3px;">+</button></div>' },
                         { id:"subtotal", header:"Subtotal", width:100,
-                          template:o=>'<span style="font-size:12px;font-weight:700;display:block;text-align:right;line-height:36px;">'+formatRupiah(o.subtotal)+'</span>' },
-                        { id:"del", header:"", width:28, template:()=>'<span class="action-btn del" title="Hapus" style="color:#dc2626;font-size:13px;line-height:36px;display:block;text-align:center;">✕</span>' }
+                          template:o=>'<span style="font-size:12px;font-weight:700;display:block;text-align:right;line-height:38px;">'+formatRupiah(o.subtotal)+'</span>' },
+                        { id:"del", header:"", width:28, template:()=>'<span class="action-btn del" title="Hapus" style="color:#dc2626;font-size:13px;line-height:38px;display:block;text-align:center;">✕</span>' }
                       ],
                       onClick:{
                         "qty-minus"(e,id){ updateCartQty(id.row,-1); return false; },
@@ -490,12 +492,12 @@
                         "del"(e,id)      { removeCartItem(id.row);   return false; }
                       }
                     },
-                    // Total display (compact height 68)
-                    { id:"total_display", view:"template", height:68, borderless:true,
+                    // Total display
+                    { id:"total_display", view:"template", height:72, borderless:true,
                       template:'<div class="total-due-box"><div class="total-due-label">TOTAL TAGIHAN</div><div class="total-due-amount">Rp\u00a00</div><div class="total-due-detail">Keranjang kosong</div></div>' },
-                    // Payment form (compact, fit in 1 screen)
+                    // Payment form — comfortably positioned, pay button raised nicely above bottom edge
                     {
-                      view:"form", id:"payment_form", padding:{top:4,right:10,bottom:4,left:10},
+                      view:"form", id:"payment_form", padding:{top:4,right:10,bottom:8,left:10},
                       elements:[
                         // Payment method selector
                         {
