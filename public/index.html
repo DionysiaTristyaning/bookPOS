@@ -285,19 +285,19 @@
       const txs = await apiCall("/transactions?limit=30");
       if ($$("history_window")) $$("history_window").destructor();
       webix.ui({
-        view:"window", id:"history_window", modal:true, position:"center", width:820, height:500,
+        view:"window", id:"history_window", modal:true, position:"center", width:840, height:480,
         head:{ view:"toolbar", cols:[
-          { view:"label", label:"📜 Riwayat Penjualan" },
+          { view:"label", label:"📜 Riwayat Penjualan / Faktur" },
           { view:"icon", icon:"wxi-close", click:()=>$$("history_window").close() }
         ]},
-        body:{ rows:[{ view:"datatable", id:"history_table", data:txs, select:"row",
+        body:{ rows:[{ view:"datatable", id:"history_table", data:txs, select:"row", rowHeight:40,
           columns:[
-            { id:"no_faktur", header:"No. Faktur", width:200, css:"isbn-text" },
-            { id:"created_at", header:"Waktu", width:160, template:o=>new Date(o.created_at).toLocaleString("id-ID") },
-            { id:"items", header:"Item", width:70, template:o=>(o.items||[]).length+" judul" },
-            { id:"metode_pembayaran", header:"Metode", width:90, template:o=>'<span class="category-tag">'+o.metode_pembayaran.toUpperCase()+'</span>' },
-            { id:"total", header:"Total", width:130, template:o=>'<span class="price-text">'+formatRupiah(o.total)+'</span>' },
-            { id:"act", header:"", width:90, template:()=>'<span class="action-btn" style="color:#2563eb;font-weight:700;">Lihat ↗</span>' }
+            { id:"no_faktur", header:"No. Faktur", width:210, template:o=>'<span style="font-weight:600;font-size:12px;color:#0f172a;">'+o.no_faktur+'</span>' },
+            { id:"created_at", header:"Waktu", width:160, template:o=>'<span style="font-size:12px;color:#475569;">'+new Date(o.created_at).toLocaleString("id-ID")+'</span>' },
+            { id:"items", header:"Item", width:80, template:o=>'<span style="font-size:12px;color:#334155;">'+(o.items||[]).length+' judul</span>' },
+            { id:"metode_pembayaran", header:"Metode", width:95, template:o=>'<span class="category-tag">'+o.metode_pembayaran.toUpperCase()+'</span>' },
+            { id:"total", header:"Total", width:130, template:o=>'<span style="font-weight:700;font-size:13px;color:#0f172a;">'+formatRupiah(o.total)+'</span>' },
+            { id:"act", header:"", width:85, template:()=>'<span class="action-btn" style="color:#2563eb;font-weight:600;font-size:12px;">Lihat ↗</span>' }
           ],
           on:{ onItemClick(id) { const r=this.getItem(id); if(r){$$("history_window").close(); showReceiptModal(r);} } }
         }]}
@@ -434,17 +434,17 @@
                             '<div style="font-size:11px;color:#6b7280;">'+o.penulis+(o.penerbit?' · '+o.penerbit:'')+'</div></div>' },
                         { id:"kategori_nama", header:"Kategori", width:105, template:o=>'<span class="category-tag">'+(o.kategori_nama||"-")+'</span>' },
                         { id:"harga_jual", header:"Harga", width:105, template:o=>'<span class="price-text">'+formatRupiah(o.harga_jual)+'</span>' },
-                        { id:"stok", header:"Stok", width:75,
+                        { id:"stok", header:"Stok", width:65,
                           template:o=>{
                             if(o.stok<=0) return '<span class="stock-badge stock-out">Habis</span>';
                             if(o.stok<=5) return '<span class="stock-badge stock-low">'+o.stok+'</span>';
                             return '<span class="stock-badge stock-in">'+o.stok+'</span>';
                           }
                         },
-                        { id:"act", header:"", width:80,
+                        { id:"act", header:"", width:105,
                           template:o=>o.stok<=0
-                            ? '<button disabled style="opacity:.4;font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid #ccc;background:#fff;">Habis</button>'
-                            : '<button class="action-btn add-cart">+ Tambah</button>'
+                            ? '<div style="display:flex;align-items:center;justify-content:center;height:100%;"><button disabled class="action-btn stock-out-btn">Habis</button></div>'
+                            : '<div style="display:flex;align-items:center;justify-content:center;height:100%;"><button class="action-btn add-cart">+ Tambah</button></div>'
                         }
                       ],
                       onClick:{ "add-cart"(e,id){ addToCart(this.getItem(id)); return false; } },
@@ -453,36 +453,36 @@
                   ]
                 },
 
-                // RIGHT: Cart + Payment — spacious, perfectly fitted, no clipping
+                // RIGHT: Cart + Payment — perfectly fitted in 1 screen, zero bottom overflow
                 {
-                  width: 430,
+                  width: 420,
                   borderless: false,
                   rows: [
                     // Cart header
                     {
-                      view:"toolbar", height:46,
+                      view:"toolbar", height:40,
                       cols:[
                         { id:"cart_header_label", view:"label", label:"🛒 Keranjang (0 item)",
                           autowidth:true, css:"cart-header-title" },
                         {},
-                        { view:"button", value:"Kosongkan", width:100, css:"webix_danger", click:clearCart }
+                        { view:"button", value:"Kosongkan", width:90, css:"webix_danger", click:clearCart }
                       ]
                     },
-                    // Cart items
+                    // Cart items (fixed 140px, rowHeight 36)
                     {
-                      view:"datatable", id:"cart_table", minHeight:170, gravity:1, rowHeight:44,
+                      view:"datatable", id:"cart_table", height:140, rowHeight:36,
                       scroll:"y",
                       columns:[
                         { id:"judul", header:"Buku", fillspace:true,
-                          template:o=>'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:44px;">'+o.judul+'</div>' },
-                        { id:"qty", header:"Qty", width:90,
-                          template:o=>'<div style="display:flex;align-items:center;justify-content:center;gap:3px;height:44px;">' +
-                            '<button class="action-btn qty-minus" style="padding:2px 7px;border:1px solid #e2e8f0;border-radius:3px;">−</button>' +
-                            '<span style="font-weight:700;width:24px;text-align:center;font-size:13px;">'+o.qty+'</span>' +
-                            '<button class="action-btn qty-plus" style="padding:2px 7px;border:1px solid #e2e8f0;border-radius:3px;">+</button></div>' },
-                        { id:"subtotal", header:"Subtotal", width:105,
-                          template:o=>'<span style="font-size:12px;font-weight:700;display:block;text-align:right;">'+formatRupiah(o.subtotal)+'</span>' },
-                        { id:"del", header:"", width:32, template:()=>'<span class="action-btn del" title="Hapus" style="color:#dc2626;font-size:14px;line-height:44px;display:block;text-align:center;">✕</span>' }
+                          template:o=>'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:36px;">'+o.judul+'</div>' },
+                        { id:"qty", header:"Qty", width:85,
+                          template:o=>'<div style="display:flex;align-items:center;justify-content:center;gap:2px;height:36px;">' +
+                            '<button class="action-btn qty-minus" style="padding:1px 6px;border:1px solid #e2e8f0;border-radius:3px;">−</button>' +
+                            '<span style="font-weight:700;width:20px;text-align:center;font-size:12px;">'+o.qty+'</span>' +
+                            '<button class="action-btn qty-plus" style="padding:1px 6px;border:1px solid #e2e8f0;border-radius:3px;">+</button></div>' },
+                        { id:"subtotal", header:"Subtotal", width:100,
+                          template:o=>'<span style="font-size:12px;font-weight:700;display:block;text-align:right;line-height:36px;">'+formatRupiah(o.subtotal)+'</span>' },
+                        { id:"del", header:"", width:28, template:()=>'<span class="action-btn del" title="Hapus" style="color:#dc2626;font-size:13px;line-height:36px;display:block;text-align:center;">✕</span>' }
                       ],
                       onClick:{
                         "qty-minus"(e,id){ updateCartQty(id.row,-1); return false; },
@@ -490,16 +490,16 @@
                         "del"(e,id)      { removeCartItem(id.row);   return false; }
                       }
                     },
-                    // Total display
-                    { id:"total_display", view:"template", height:96, borderless:true,
+                    // Total display (compact height 68)
+                    { id:"total_display", view:"template", height:68, borderless:true,
                       template:'<div class="total-due-box"><div class="total-due-label">TOTAL TAGIHAN</div><div class="total-due-amount">Rp\u00a00</div><div class="total-due-detail">Keranjang kosong</div></div>' },
-                    // Payment form
+                    // Payment form (compact, fit in 1 screen)
                     {
-                      view:"form", id:"payment_form", padding:{top:8,right:12,bottom:8,left:12},
+                      view:"form", id:"payment_form", padding:{top:4,right:10,bottom:4,left:10},
                       elements:[
                         // Payment method selector
                         {
-                          view:"segmented", id:"payment_method", value:"tunai", height:38,
+                          view:"segmented", id:"payment_method", value:"tunai", height:32,
                           options:[
                             { id:"tunai", value:"💵 Tunai" },
                             { id:"kartu", value:"💳 Kartu" },
@@ -513,10 +513,11 @@
                             updateChangeDue();
                           }}
                         },
-                        // Cash input — full width with top label
+                        // Cash input — inline label, 34px height
                         { view:"text", id:"cash_input",
-                          label:"Nominal Diterima / Dibayar (Rp):",
-                          labelPosition:"top",
+                          label:"Bayar (Rp):",
+                          labelWidth:85,
+                          height:34,
                           placeholder:"0",
                           keyPressTimeout:80,
                           on:{
@@ -524,28 +525,28 @@
                             onEnter:()=>processCheckout()
                           }
                         },
-                        // Change label — full width
-                        { id:"change_due_label", view:"template", borderless:true, height:38,
+                        // Change label — compact 30px
+                        { id:"change_due_label", view:"template", borderless:true, height:30,
                           template:'<div class="change-box"><span>Status Kembalian:</span><b>Rp 0</b></div>' },
-                        // Quick cash — 2 rows of 3
+                        // Quick cash — 2 rows of 3, 26px height
                         {
                           cols:[
-                            { view:"button", value:"Uang Pas", height:34, css:"quick-cash-btn", click:()=>setQuickCash("pas") },
-                            { view:"button", value:"50.000",   height:34, css:"quick-cash-btn", click:()=>setQuickCash(50000) },
-                            { view:"button", value:"100.000",  height:34, css:"quick-cash-btn", click:()=>setQuickCash(100000) }
+                            { view:"button", value:"Uang Pas", height:26, css:"quick-cash-btn", click:()=>setQuickCash("pas") },
+                            { view:"button", value:"50.000",   height:26, css:"quick-cash-btn", click:()=>setQuickCash(50000) },
+                            { view:"button", value:"100.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(100000) }
                           ]
                         },
                         {
                           cols:[
-                            { view:"button", value:"200.000",  height:34, css:"quick-cash-btn", click:()=>setQuickCash(200000) },
-                            { view:"button", value:"500.000",  height:34, css:"quick-cash-btn", click:()=>setQuickCash(500000) },
-                            { view:"button", value:"1.000.000", height:34, css:"quick-cash-btn", click:()=>setQuickCash(1000000) }
+                            { view:"button", value:"200.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(200000) },
+                            { view:"button", value:"500.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(500000) },
+                            { view:"button", value:"1.000.000", height:26, css:"quick-cash-btn", click:()=>setQuickCash(1000000) }
                           ]
                         },
                         { height:4 },
                         { id:"btn_checkout", view:"button",
                           value:"💳 BAYAR & CETAK STRUK",
-                          height:48, css:"pay-btn", click:processCheckout }
+                          height:42, css:"pay-btn", click:processCheckout }
                       ]
                     }
                   ]

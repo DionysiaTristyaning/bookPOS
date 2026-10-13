@@ -489,11 +489,24 @@ html, body {
   color: #fff;
   font-weight: 700;
   font-size: 11px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 5px;
+  white-space: nowrap;
+  border: none;
 }
 
 .action-btn.add-cart:hover { background: var(--primary-dark); }
+
+.action-btn.stock-out-btn {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
 
 .action-btn.del:hover { background: var(--danger-light); color: var(--danger); }
 .action-btn.restore:hover { background: var(--success-light); color: var(--success); }
@@ -574,17 +587,18 @@ html, body {
 }
 
 /* Webix-specific total display */
+/* Webix-specific total display */
 div[view_id="total_display"] {
   padding: 0 !important;
   overflow: hidden !important;
   border-radius: 8px !important;
-  margin: 6px 10px !important;
+  margin: 4px 8px !important;
 }
 
 .total-due-box {
   background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
   color: #fff;
-  padding: 10px 14px;
+  padding: 6px 12px;
   text-align: right;
   height: 100%;
   box-sizing: border-box;
@@ -596,28 +610,28 @@ div[view_id="total_display"] {
 }
 
 .total-due-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   color: #93c5fd;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .total-due-amount {
   font-family: var(--font-mono);
-  font-size: 26px;
+  font-size: 21px;
   font-weight: 800;
   color: #4ade80;
   margin: 2px 0;
-  line-height: 1.2;
+  line-height: 1.1;
   letter-spacing: -0.5px;
 }
 
 .total-due-detail {
-  font-size: 11px;
+  font-size: 10px;
   color: #cbd5e1;
-  line-height: 1.2;
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -633,11 +647,11 @@ div[view_id="change_due_label"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 5px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #475569;
   height: 100%;
@@ -646,7 +660,7 @@ div[view_id="change_due_label"] {
 
 .change-box b {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #0f172a;
 }
@@ -675,11 +689,12 @@ div[view_id="change_due_label"] {
 .quick-cash-btn button {
   font-family: var(--font-mono) !important;
   font-weight: 700 !important;
-  font-size: 12px !important;
+  font-size: 11px !important;
   background: #f8fafc !important;
   color: #1e293b !important;
   border: 1px solid #cbd5e1 !important;
-  border-radius: 6px !important;
+  border-radius: 5px !important;
+  padding: 0 !important;
   transition: all 0.15s ease !important;
 }
 
@@ -694,25 +709,24 @@ div[view_id="change_due_label"] {
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
   color: #fff !important;
   font-weight: 800 !important;
-  font-size: 14px !important;
-  border-radius: 8px !important;
-  letter-spacing: 0.5px !important;
+  font-size: 13px !important;
+  border-radius: 6px !important;
+  letter-spacing: 0.3px !important;
   border: none !important;
-  box-shadow: 0 4px 12px rgba(22,163,74,0.3) !important;
+  box-shadow: 0 3px 10px rgba(22,163,74,0.3) !important;
   transition: all 0.15s ease !important;
 }
 
 .pay-btn button:hover {
   background: linear-gradient(135deg, #15803d 0%, #166534 100%) !important;
-  box-shadow: 0 6px 16px rgba(22,163,74,0.4) !important;
-  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(22,163,74,0.4) !important;
 }
 
 /* Secondary toolbar buttons */
 .secondary-toolbar-btn { font-weight: 600 !important; border-radius: 5px !important; }
 
 /* ============================================================
-   KPI CARDS (master.html)
+   KPI CARDS (master.html & laporan.html)
    ============================================================ */
 .kpi-card {
   background: var(--bg-white);
@@ -741,27 +755,32 @@ div[view_id="change_due_label"] {
 }
 
 /* ============================================================
-   RECEIPT / STRUK
+   RECEIPT / STRUK (Harmonious Inter typography)
    ============================================================ */
 .receipt-paper {
   background: #fff;
-  width: 300px;
+  width: 320px;
   margin: 0 auto;
-  padding: 20px 16px;
-  font-family: var(--font-mono);
+  padding: 20px 18px;
+  font-family: var(--font-main) !important;
   font-size: 12px;
-  color: #111;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.receipt-paper * {
+  font-family: var(--font-main) !important;
 }
 
 .receipt-header { text-align: center; margin-bottom: 12px; }
-.receipt-store-name { font-size: 16px; font-weight: 800; letter-spacing: 1px; }
-.receipt-sub { font-size: 10px; color: #6b7280; margin-top: 2px; }
-.receipt-divider { border-top: 1px dashed #9ca3af; margin: 8px 0; }
-.receipt-row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px; }
-.receipt-total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 800; margin-top: 4px; padding-top: 4px; border-top: 1px dashed #374151; }
-.receipt-footer { text-align: center; font-size: 10px; color: #6b7280; margin-top: 12px; }
+.receipt-store-name { font-size: 16px; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; }
+.receipt-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+.receipt-divider { border-top: 1px dashed #cbd5e1; margin: 8px 0; }
+.receipt-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; color: #334155; }
+.receipt-row span:first-child { color: #64748b; }
+.receipt-total-row { display: flex; justify-content: space-between; font-size: 14px; font-weight: 800; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #475569; color: #0f172a; }
+.receipt-footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 12px; }
 
 /* ============================================================
    PRINT
@@ -886,48 +905,56 @@ div[view_id="change_due_label"] {
   padding: 16px 20px;
   margin-bottom: 16px;
   overflow-x: auto;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
 
 .lp-section h2 {
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-dark);
+  color: #0f172a;
   margin-bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .lp-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  font-family: var(--font-main);
 }
 
 .lp-table th {
   text-align: left;
-  padding: 8px 10px;
+  padding: 10px 14px;
   border-bottom: 2px solid var(--border);
+  background: #f8fafc;
   color: #475569;
   font-weight: 700;
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
 
 .lp-table td {
   text-align: left;
-  padding: 10px;
+  padding: 11px 14px;
   border-bottom: 1px solid #f1f5f9;
-  color: var(--text-mid);
+  color: #334155;
+  font-size: 13px;
+}
+
+.lp-table tbody tr:hover td {
+  background: #f8fafc;
 }
 
 .lp-table tr:last-child td { border-bottom: none; }
 .lp-table td.r, .lp-table th.r { text-align: right; }
 
-.bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; margin: 6px 0; }
-.bar-row .tgl { width: 88px; color: var(--text-muted); font-weight: 600; font-family: var(--font-mono); font-size: 11px; }
-.bar { height: 14px; background: var(--primary); border-radius: 3px; min-width: 2px; }
-.bar-val { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.bar-row { display: flex; align-items: center; gap: 12px; font-size: 12px; margin: 8px 0; }
+.bar-row .tgl { width: 90px; color: #64748b; font-weight: 600; font-family: var(--font-mono); font-size: 11px; }
+.bar { height: 16px; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 4px; min-width: 4px; transition: width 0.3s ease; }
+.bar-val { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #475569; }
 
 #lp-pesan { color: var(--danger); font-size: 13px; font-weight: 600; margin-bottom: 12px; }
