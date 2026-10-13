@@ -103,17 +103,17 @@
     async function checkHealth() {
       try {
         const health = await apiCall("/health");
-        const pill = $$("db_status_pill");
+        const pill = document.getElementById("db_status_pill") || ($$("db_status_pill") ? $$("db_status_pill").$view : null);
         if (pill) {
           if (health.database_connected) {
-            pill.setHTML('<span class="status-pill status-online">● MongoDB Atlas Online</span>');
+            pill.innerHTML = '<span class="status-pill status-online">🟢 Atlas Online</span>';
           } else {
-            pill.setHTML('<span class="status-pill status-demo" title="' + (health.error || "Demo Mode") + '">⚡ Demo Mode (In-Memory)</span>');
+            pill.innerHTML = '<span class="status-pill status-demo" title="' + (health.error || "DB Terputus") + '">⚠️ DB Offline</span>';
           }
         }
       } catch (e) {
-        const pill = $$("db_status_pill");
-        if (pill) pill.setHTML('<span class="status-pill status-demo">⚠️ API Offline</span>');
+        const pill = document.getElementById("db_status_pill");
+        if (pill) pill.innerHTML = '<span class="status-pill status-demo">⚠️ API Offline</span>';
       }
     }
 
@@ -531,11 +531,13 @@
     // Live Clock
     function startLiveClock() {
       function update() {
-        const clock = $$("live_clock");
-        if (clock) {
-          const now = new Date();
-          clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-        }
+        const el = document.getElementById("live_clock");
+        const now = new Date();
+        const tgl = now.toLocaleDateString("id-ID", { weekday: 'short', day: 'numeric', month: 'short' });
+        const jam = now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const text = "🕒 " + tgl + " " + jam;
+        if (el) el.textContent = text;
+        else if ($$("live_clock")) $$("live_clock").setValue(text);
       }
       update();
       setInterval(update, 1000);
@@ -543,84 +545,114 @@
 
     // Webix Ready
     webix.ready(function () {
+      webix.ui.fullScreen();
       webix.ui({
         id: "main_layout",
-        rows: [
-          // Top Navigation Header
+        cols: [
+          // 1. SIDEBAR NAVIGASI KIRI
           {
-            view: "toolbar",
-            height: 54,
-            css: "app-header",
-            cols: [
-              {
-                view: "label",
-                autowidth: true,
-                label: '<span class="brand-title">📚 BookPOS <span class="brand-badge">MVP</span></span>'
-              },
-              { width: 15 },
-              {
-                view: "button",
-                value: "🛒 Kasir (POS)",
-                css: "nav-btn active",
-                autowidth: true
-              },
-              {
-                view: "button",
-                value: "📦 Master Data Buku",
-                css: "nav-btn",
-                autowidth: true,
-                hidden: currentUser.role !== "admin",
-                click: () => window.location.href = "master.html"
-              },
-              ...(currentUser.role === "admin" ? [{
-                view: "button",
-                value: "Laporan",
-                css: "nav-btn",
-                autowidth: true,
-                click: () => window.location.href = "laporan.html"
-              }] : []),
-              {},
-              {
-                id: "db_status_pill",
-                view: "template",
-                borderless: true,
-                width: 220,
-                template: '<span class="status-pill status-demo">Mengecek DB...</span>'
-              },
-              {
-                id: "user_info_label",
-                view: "label",
-                autowidth: true,
-                label: '👤 ' + currentUser.nama + ' (' + currentUser.role + ')',
-                css: "user-tag"
-              },
-              {
-                id: "live_clock",
-                view: "label",
-                autowidth: true,
-                label: "",
-                css: "clock-text"
-              },
-              { width: 6 },
-              {
-                view: "button",
-                value: "📜 Riwayat Penjualan",
-                autowidth: true,
-                click: showSalesHistory
-              },
-              { width: 6 },
-              {
-                view: "button",
-                value: "Logout",
-                autowidth: true,
-                click: () => Auth.logout()
-              }
-            ]
+            width: 240,
+            view: "template",
+            borderless: true,
+            css: "pos-sidebar-container",
+            template: function () {
+              const initial = (currentUser.nama || "K").charAt(0).toUpperCase();
+              return `
+                <div class="sidebar-wrapper">
+                  <div class="sidebar-brand">
+                    <div class="sidebar-brand-icon">📚</div>
+                    <div class="sidebar-brand-text">
+                      <span class="sidebar-brand-title">BookPOS <span class="brand-pro-tag">PRO</span></span>
+                      <span class="sidebar-brand-subtitle">Smart Retail System</span>
+                    </div>
+                  </div>
+
+                  <div class="sidebar-menu-links">
+                    <a href="index.html" class="sidebar-link active">
+                      <span class="nav-icon">🛒</span>
+                      <span class="nav-label">Kasir (POS)</span>
+                      <span class="nav-badge-pill">F1</span>
+                    </a>
+                    ${currentUser.role === 'admin' ? `
+                      <a href="master.html" class="sidebar-link">
+                        <span class="nav-icon">📦</span>
+                        <span class="nav-label">Master Data Buku</span>
+                      </a>
+                      <a href="laporan.html" class="sidebar-link">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-label">Laporan Penjualan</span>
+                      </a>
+                    ` : ''}
+                    <a href="javascript:void(0)" onclick="showSalesHistory()" class="sidebar-link">
+                      <span class="nav-icon">📜</span>
+                      <span class="nav-label">Riwayat Nota</span>
+                    </a>
+                  </div>
+
+                  <div class="sidebar-footer-section">
+                    <div class="sidebar-user-card">
+                      <div class="user-avatar">${initial}</div>
+                      <div class="user-details">
+                        <div class="user-name" title="${currentUser.nama || 'Kasir'}">${currentUser.nama || 'Kasir'}</div>
+                        <div class="user-role-badge">${(currentUser.role || 'kasir').toUpperCase()}</div>
+                      </div>
+                      <button type="button" class="logout-icon-btn" onclick="Auth.logout()" title="Keluar dari Akun">
+                        🚪 Keluar
+                      </button>
+                    </div>
+                    <div class="sidebar-meta-row">
+                      <span id="live_clock" class="sidebar-clock-row">🕒 --:--</span>
+                      <span id="db_status_pill"><span class="status-pill status-demo">Mengecek DB...</span></span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }
           },
 
-          // Main Layout 2 Kolom
+          // 2. WORKSPACE AREA UTAMA (KANAN)
           {
-            cols: [
+            rows: [
+              // Topbar Header POS
+              {
+                view: "toolbar",
+                height: 50,
+                css: "pos-topbar",
+                cols: [
+                  {
+                    view: "label",
+                    label: '<span class="page-title-badge">🛒 Kasir & Point of Sale</span>',
+                    autowidth: true
+                  },
+                  {},
+                  {
+                    view: "template",
+                    borderless: true,
+                    autowidth: true,
+                    template: '<span class="keyboard-hint-pill"><b>Enter / F2</b> Cari / Scan</span> <span class="keyboard-hint-pill"><b>F9</b> Bayar Cepat</span>'
+                  },
+                  { width: 6 },
+                  {
+                    view: "button",
+                    value: "📜 Riwayat Nota",
+                    autowidth: true,
+                    css: "secondary-toolbar-btn",
+                    click: showSalesHistory
+                  },
+                  { width: 6 },
+                  {
+                    view: "button",
+                    value: "🔄 Segarkan",
+                    autowidth: true,
+                    css: "secondary-toolbar-btn",
+                    click: () => loadCatalog()
+                  }
+                ]
+              },
+
+              // 2 Kolom POS: Katalog & Keranjang
+              {
+                cols: [
               // Kolom Kiri: Katalog & Barcode Search
               {
                 gravity: 1.4,
@@ -762,7 +794,7 @@
                   // Header Keranjang
                   {
                     view: "toolbar",
-                    height: 44,
+                    height: 38,
                     cols: [
                       {
                         id: "cart_header_label",
@@ -774,7 +806,7 @@
                       {
                         view: "button",
                         value: "Kosongkan",
-                        width: 95,
+                        width: 85,
                         css: "webix_danger",
                         click: clearCart
                       }
@@ -785,27 +817,28 @@
                   {
                     view: "datatable",
                     id: "cart_table",
-                    height: 240,
-                    rowHeight: 40,
+                    height: 160,
+                    minHeight: 120,
+                    rowHeight: 38,
                     columns: [
                       { id: "judul", header: "Judul Buku", fillspace: true, template: obj => '<b>' + obj.judul + '</b>' },
-                      { id: "harga_jual", header: "Harga", width: 90, template: obj => formatRupiah(obj.harga_jual) },
+                      { id: "harga_jual", header: "Harga", width: 85, template: obj => formatRupiah(obj.harga_jual) },
                       {
                         id: "qty",
                         header: "Qty",
-                        width: 95,
+                        width: 90,
                         template: obj =>
-                          '<div style="display:flex; align-items:center; gap:4px;">' +
-                          '<button class="action-btn qty-minus" style="padding:1px 6px;">-</button>' +
-                          '<span style="font-weight:700; width:20px; text-align:center;">' + obj.qty + '</span>' +
-                          '<button class="action-btn qty-plus" style="padding:1px 6px;">+</button>' +
+                          '<div style="display:flex; align-items:center; gap:3px;">' +
+                          '<button class="action-btn qty-minus" style="padding:1px 5px;">-</button>' +
+                          '<span style="font-weight:700; width:18px; text-align:center;">' + obj.qty + '</span>' +
+                          '<button class="action-btn qty-plus" style="padding:1px 5px;">+</button>' +
                           '</div>'
                       },
-                      { id: "subtotal", header: "Subtotal", width: 105, template: obj => '<b style="color:#0f172a;">' + formatRupiah(obj.subtotal) + '</b>' },
+                      { id: "subtotal", header: "Subtotal", width: 95, template: obj => '<b style="color:#0f172a;">' + formatRupiah(obj.subtotal) + '</b>' },
                       {
                         id: "delete",
                         header: "",
-                        width: 36,
+                        width: 32,
                         template: () => '<span class="action-btn del" title="Hapus">✕</span>'
                       }
                     ],
@@ -829,13 +862,13 @@
                   {
                     id: "total_display",
                     view: "template",
-                    height: 100,
+                    height: 76,
                     borderless: true,
                     template:
-                      '<div class="total-due-box">' +
-                      '<div class="total-due-label">Total Tagihan</div>' +
-                      '<div class="total-due-amount">Rp 0</div>' +
-                      '<div style="font-size:11px; margin-top:4px; opacity:0.85;">Keranjang masih kosong</div>' +
+                      '<div class="total-due-box" style="padding:8px 14px;">' +
+                      '<div class="total-due-label" style="font-size:11px;">Total Tagihan</div>' +
+                      '<div class="total-due-amount" style="font-size:23px;">Rp 0</div>' +
+                      '<div style="font-size:10px; margin-top:2px; opacity:0.85;">Keranjang masih kosong</div>' +
                       '</div>'
                   },
 
@@ -843,7 +876,7 @@
                   {
                     view: "form",
                     id: "payment_form",
-                    padding: 10,
+                    padding: 8,
                     elements: [
                       {
                         view: "segmented",
@@ -903,7 +936,7 @@
                         id: "btn_checkout",
                         view: "button",
                         value: "💳 BAYAR & CETAK STRUK (F9)",
-                        height: 48,
+                        height: 42,
                         css: "pay-btn",
                         click: processCheckout
                       }
@@ -914,11 +947,16 @@
             ]
           }
         ]
-      });
+      }
+    ]
+  });
 
-      // Shortcut F9 untuk bayar
+      // Shortcut Keyboard F2 (Scan/Cari) dan F9 (Bayar)
       window.addEventListener("keydown", function (e) {
-        if (e.key === "F9") {
+        if (e.key === "F2") {
+          e.preventDefault();
+          if ($$("search_input")) $$("search_input").focus();
+        } else if (e.key === "F9") {
           e.preventDefault();
           processCheckout();
         }

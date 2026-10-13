@@ -65,28 +65,30 @@
     async function checkHealth() {
       try {
         const health = await apiCall("/health");
-        const pill = $$("db_status_pill");
+        const pill = document.getElementById("db_status_pill") || ($$("db_status_pill") ? $$("db_status_pill").$view : null);
         if (pill) {
           if (health.database_connected) {
-            pill.setHTML('<span class="status-pill status-online">● MongoDB Atlas Online</span>');
+            pill.innerHTML = '<span class="status-pill status-online">🟢 Atlas Online</span>';
           } else {
-            pill.setHTML('<span class="status-pill status-demo" title="' + (health.error || "Demo Mode") + '">⚡ Demo Mode (In-Memory)</span>');
+            pill.innerHTML = '<span class="status-pill status-demo" title="' + (health.error || "DB Terputus") + '">⚠️ DB Offline</span>';
           }
         }
       } catch (e) {
-        const pill = $$("db_status_pill");
-        if (pill) pill.setHTML('<span class="status-pill status-demo">⚠️ API Offline</span>');
+        const pill = document.getElementById("db_status_pill");
+        if (pill) pill.innerHTML = '<span class="status-pill status-demo">⚠️ API Offline</span>';
       }
     }
 
     // Live Clock
     function startLiveClock() {
       function update() {
-        const clock = $$("live_clock");
-        if (clock) {
-          const now = new Date();
-          clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-        }
+        const el = document.getElementById("live_clock");
+        const now = new Date();
+        const tgl = now.toLocaleDateString("id-ID", { weekday: 'short', day: 'numeric', month: 'short' });
+        const jam = now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const text = "🕒 " + tgl + " " + jam;
+        if (el) el.textContent = text;
+        else if ($$("live_clock")) $$("live_clock").setValue(text);
       }
       update();
       setInterval(update, 1000);
@@ -696,74 +698,97 @@
     webix.ready(function () {
       if (Auth.user?.role !== "admin") return;
 
+      webix.ui.fullScreen();
       webix.ui({
         id: "master_layout",
-        rows: [
-          // Top Navigation Header
+        cols: [
+          // 1. SIDEBAR NAVIGASI KIRI
           {
-            view: "toolbar",
-            height: 52,
-            css: "app-header",
-            cols: [
-              {
-                view: "label",
-                autowidth: true,
-                label: '<span class="brand-title">📚 BookPOS <span class="brand-badge">MVP</span></span>'
-              },
-              { width: 10 },
-              {
-                view: "button",
-                value: "🛒 Kasir (POS)",
-                css: "nav-btn",
-                autowidth: true,
-                click: () => window.location.href = "index.html"
-              },
-              {
-                view: "button",
-                value: "📦 Master Data Buku",
-                css: "nav-btn active",
-                autowidth: true
-              },
-              {
-                view: "button",
-                value: "📊 Laporan",
-                css: "nav-btn",
-                autowidth: true,
-                click: () => window.location.href = "laporan.html"
-              },
-              {},
-              {
-                id: "db_status_pill",
-                view: "template",
-                borderless: true,
-                width: 170,
-                template: '<span class="status-pill status-demo">Mengecek DB...</span>'
-              },
-              { width: 4 },
-              {
-                id: "user_info_label",
-                view: "label",
-                autowidth: true,
-                label: '👤 ' + (Auth.user?.nama || "Admin") + ' (' + (Auth.user?.role || "admin") + ')',
-                css: "user-tag"
-              },
-              { width: 4 },
-              {
-                id: "live_clock",
-                view: "label",
-                autowidth: true,
-                label: "",
-                css: "clock-text"
-              },
-              { width: 4 },
-              {
-                view: "button",
-                value: "Logout",
-                autowidth: true,
-                click: () => Auth.logout()
-              }
-            ]
+            width: 240,
+            view: "template",
+            borderless: true,
+            css: "pos-sidebar-container",
+            template: function () {
+              const initial = ((Auth.user?.nama) || "A").charAt(0).toUpperCase();
+              return `
+                <div class="sidebar-wrapper">
+                  <div class="sidebar-brand">
+                    <div class="sidebar-brand-icon">📚</div>
+                    <div class="sidebar-brand-text">
+                      <span class="sidebar-brand-title">BookPOS <span class="brand-pro-tag">PRO</span></span>
+                      <span class="sidebar-brand-subtitle">Smart Retail System</span>
+                    </div>
+                  </div>
+
+                  <div class="sidebar-menu-links">
+                    <a href="index.html" class="sidebar-link">
+                      <span class="nav-icon">🛒</span>
+                      <span class="nav-label">Kasir (POS)</span>
+                    </a>
+                    <a href="master.html" class="sidebar-link active">
+                      <span class="nav-icon">📦</span>
+                      <span class="nav-label">Master Data Buku</span>
+                      <span class="nav-badge-pill">Admin</span>
+                    </a>
+                    <a href="laporan.html" class="sidebar-link">
+                      <span class="nav-icon">📊</span>
+                      <span class="nav-label">Laporan Penjualan</span>
+                    </a>
+                  </div>
+
+                  <div class="sidebar-footer-section">
+                    <div class="sidebar-user-card">
+                      <div class="user-avatar">${initial}</div>
+                      <div class="user-details">
+                        <div class="user-name" title="${Auth.user?.nama || 'Admin'}">${Auth.user?.nama || 'Admin'}</div>
+                        <div class="user-role-badge">${(Auth.user?.role || 'admin').toUpperCase()}</div>
+                      </div>
+                      <button type="button" class="logout-icon-btn" onclick="Auth.logout()" title="Keluar dari Akun">
+                        🚪 Keluar
+                      </button>
+                    </div>
+                    <div class="sidebar-meta-row">
+                      <span id="live_clock" class="sidebar-clock-row">🕒 --:--</span>
+                      <span id="db_status_pill"><span class="status-pill status-demo">Mengecek DB...</span></span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }
           },
+
+          // 2. WORKSPACE AREA UTAMA
+          {
+            rows: [
+              // Topbar Header Master
+              {
+                view: "toolbar",
+                height: 50,
+                css: "pos-topbar",
+                cols: [
+                  {
+                    view: "label",
+                    label: '<span class="page-title-badge">📦 Kelola Master Data Buku</span>',
+                    autowidth: true
+                  },
+                  {},
+                  {
+                    view: "button",
+                    value: "🛒 Terminal Kasir (POS)",
+                    autowidth: true,
+                    css: "secondary-toolbar-btn",
+                    click: () => window.location.href = "index.html"
+                  },
+                  { width: 6 },
+                  {
+                    view: "button",
+                    value: "📊 Laporan Penjualan",
+                    autowidth: true,
+                    css: "secondary-toolbar-btn",
+                    click: () => window.location.href = "laporan.html"
+                  }
+                ]
+              },
 
           // Header Kartu KPI Statistik
           {
@@ -987,7 +1012,9 @@
             }
           }
         ]
-      });
+      }
+    ]
+  });
 
       // Modal: Tambah / Edit Buku Window
       webix.ui({
@@ -1051,9 +1078,11 @@
       });
 
       // Init Data
+      startLiveClock();
       checkHealth();
       loadCategories();
       loadBooks();
+      loadStats();
     });
   </script>
 </body>

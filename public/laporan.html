@@ -3,96 +3,196 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Laporan Transaksi - BookPOS</title>
+<title>Laporan Transaksi - BookPOS PRO</title>
+<link rel="stylesheet" href="style.css">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2937; }
-  header { background: #1e293b; color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
-  header a { color: #cbd5e1; text-decoration: none; font-size: 14px; }
-  main { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
-  .filter { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 16px; }
-  .filter label { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
-  input, button { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
-  button { background: #2563eb; color: #fff; border: 0; cursor: pointer; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .card { background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .card small { color: #64748b; }
-  .card strong { display: block; font-size: 20px; margin-top: 4px; }
-  section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-x: auto; }
-  h2 { font-size: 16px; margin: 0 0 10px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e5e7eb; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background: #f8fafc; color: #1e293b; overflow: hidden; height: 100vh; }
+  .app-container { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+  .sidebar-box { width: 240px; min-width: 240px; height: 100vh; background: #0b1120; flex-shrink: 0; display: flex; }
+  .content-area { flex: 1; height: 100vh; overflow-y: auto; padding: 24px 32px; box-sizing: border-box; background: #f8fafc; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+  .page-title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px; letter-spacing: -0.3px; }
+  .page-subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+  .filter { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin-bottom: 24px; background: #ffffff; padding: 16px 20px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .filter label { font-size: 12px; font-weight: 700; color: #475569; display: flex; flex-direction: column; gap: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+  input[type="date"] { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; color: #1e293b; font-weight: 600; font-family: inherit; }
+  input[type="date"]:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+  .btn-filter { padding: 10px 22px; background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); color: #fff; border: 0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25); }
+  .btn-filter:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(79, 70, 229, 0.35); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 12px; padding: 18px 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+  .card small { color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card strong { display: block; font-size: 22px; font-weight: 800; color: #0f172a; margin-top: 8px; }
+  .card.highlight { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-color: #bbf7d0; }
+  .card.highlight strong { color: #15803d; }
+  section { background: #fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); overflow-x: auto; }
+  h2 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+  td { text-align: left; padding: 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  tr:last-child td { border-bottom: none; }
   td.r, th.r { text-align: right; }
-  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
-  .bar-row .tgl { width: 90px; color: #64748b; }
-  .bar { height: 14px; background: #2563eb; border-radius: 3px; min-width: 1px; }
-  #pesan { color: #b91c1c; margin-bottom: 12px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; font-size: 13px; margin: 8px 0; }
+  .bar-row .tgl { width: 95px; color: #64748b; font-weight: 600; }
+  .bar { height: 16px; background: linear-gradient(90deg, #4f46e5 0%, #818cf8 100%); border-radius: 4px; min-width: 2px; }
+  #pesan { color: #dc2626; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
 </style>
 </head>
 <body>
-<header>
-  <strong>📊 Laporan Transaksi - BookPOS</strong>
-  <div style="display:flex; gap:16px;">
-    <a href="/">Kasir / POS</a>
-    <a href="/master.html">Master Data Buku</a>
-  </div>
-</header>
-<main>
-  <div class="filter">
-    <label>Dari <input type="date" id="dari"></label>
-    <label>Sampai <input type="date" id="sampai"></label>
-    <button id="btnTampil">Tampilkan</button>
-  </div>
-  <div id="pesan"></div>
+<div class="app-container">
+  <!-- 1. SIDEBAR NAVIGASI KIRI -->
+  <aside class="sidebar-box">
+    <div class="sidebar-wrapper">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">📚</div>
+        <div class="sidebar-brand-text">
+          <span class="sidebar-brand-title">BookPOS <span class="brand-pro-tag">PRO</span></span>
+          <span class="sidebar-brand-subtitle">Smart Retail System</span>
+        </div>
+      </div>
 
-  <div class="cards">
-    <div class="card"><small>Jumlah transaksi</small><strong id="kTx">-</strong></div>
-    <div class="card"><small>Buku terjual</small><strong id="kBuku">-</strong></div>
-    <div class="card"><small>Omzet (sebelum pajak)</small><strong id="kOmzet">-</strong></div>
-    <div class="card"><small>Pajak</small><strong id="kPajak">-</strong></div>
-    <div class="card"><small>Total penerimaan</small><strong id="kTotal">-</strong></div>
-  </div>
+      <div class="sidebar-menu-links">
+        <a href="/" class="sidebar-link">
+          <span class="nav-icon">🛒</span>
+          <span class="nav-label">Kasir (POS)</span>
+          <span class="nav-badge-pill">F1</span>
+        </a>
+        <a href="/master.html" class="sidebar-link">
+          <span class="nav-icon">📦</span>
+          <span class="nav-label">Master Data Buku</span>
+        </a>
+        <a href="/laporan.html" class="sidebar-link active">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Laporan Penjualan</span>
+        </a>
+      </div>
 
-  <section>
-    <h2>Penjualan per hari</h2>
-    <div id="perHari"></div>
-  </section>
+      <div class="sidebar-footer-section">
+        <div class="sidebar-user-card">
+          <div class="user-avatar" id="userAvatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="userName">Administrator</div>
+            <div class="user-role-badge">ADMIN</div>
+          </div>
+          <button type="button" class="logout-icon-btn" onclick="logout()" title="Keluar">
+            🚪 Keluar
+          </button>
+        </div>
+        <div class="sidebar-meta-row">
+          <span id="live_clock" class="sidebar-clock-row">🕒 --:--</span>
+          <span id="db_status_pill"><span class="status-pill status-online">🟢 Atlas Online</span></span>
+        </div>
+      </div>
+    </div>
+  </aside>
 
-  <section>
-    <h2>Per metode pembayaran</h2>
-    <table>
-      <thead><tr><th>Metode</th><th class="r">Transaksi</th><th class="r">Total</th></tr></thead>
-      <tbody id="perMetode"></tbody>
-    </table>
-  </section>
+  <!-- 2. KONTEN UTAMA -->
+  <main class="content-area">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">📊 Laporan & Analitik Penjualan</h1>
+        <div class="page-subtitle">Ringkasan transaksi, omzet bersih, pajak terkumpul, dan performa kasir</div>
+      </div>
+    </div>
 
-  <section>
-    <h2>5 buku terlaris</h2>
-    <table>
-      <thead><tr><th>Judul</th><th>ISBN</th><th class="r">Terjual</th><th class="r">Pendapatan</th></tr></thead>
-      <tbody id="terlaris"></tbody>
-    </table>
-  </section>
+    <div class="filter">
+      <label>Dari Tanggal <input type="date" id="dari"></label>
+      <label>Sampai Tanggal <input type="date" id="sampai"></label>
+      <button class="btn-filter" id="btnTampil">🔍 Tampilkan Laporan</button>
+    </div>
+    <div id="pesan"></div>
 
-  <section>
-    <h2>10 transaksi terbaru</h2>
-    <table>
-      <thead><tr><th>No. Faktur</th><th>Waktu</th><th>Metode</th><th>Kasir</th><th class="r">Total</th></tr></thead>
-      <tbody id="terbaru"></tbody>
-    </table>
-  </section>
-</main>
+    <div class="cards">
+      <div class="card"><small>Jumlah Transaksi</small><strong id="kTx">-</strong></div>
+      <div class="card"><small>Buku Terjual</small><strong id="kBuku">-</strong></div>
+      <div class="card"><small>Omzet Bersih</small><strong id="kOmzet">-</strong></div>
+      <div class="card"><small>Pajak Terkumpul</small><strong id="kPajak">-</strong></div>
+      <div class="card highlight"><small>Total Penerimaan</small><strong id="kTotal">-</strong></div>
+    </div>
+
+    <section>
+      <h2>📈 Penjualan per Hari</h2>
+      <div id="perHari"></div>
+    </section>
+
+    <section>
+      <h2>💳 Penjualan per Metode Pembayaran</h2>
+      <table>
+        <thead><tr><th>Metode Pembayaran</th><th class="r">Jumlah Transaksi</th><th class="r">Total Penerimaan</th></tr></thead>
+        <tbody id="perMetode"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>🏆 5 Buku Terlaris</h2>
+      <table>
+        <thead><tr><th>Judul Buku</th><th>ISBN</th><th class="r">Terjual (Qty)</th><th class="r">Total Pendapatan</th></tr></thead>
+        <tbody id="terlaris"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>🕒 10 Transaksi Terakhir</h2>
+      <table>
+        <thead><tr><th>No. Faktur</th><th>Waktu Transaksi</th><th>Metode</th><th>Kasir</th><th class="r">Total Bayar</th></tr></thead>
+        <tbody id="terbaru"></tbody>
+      </table>
+    </section>
+  </main>
+</div>
 
 <script src="pos-helper.js"></script>
 <script>
-  (function () {
-    let user = null;
-    try { user = JSON.parse(localStorage.getItem("user")); } catch (e) {}
-    if (!POS.getToken() || !user) {
-      location.replace("/login.html");
-    } else if (user.role !== "admin") {
-      location.replace("/");
+  let user = null;
+  try { user = JSON.parse(localStorage.getItem("user")); } catch (e) {}
+  if (!POS.getToken() || !user) {
+    location.replace("/login.html");
+  } else if (user.role !== "admin") {
+    location.replace("/");
+  }
+
+  if (user) {
+    const nameEl = document.getElementById("userName");
+    const avatarEl = document.getElementById("userAvatar");
+    if (nameEl) nameEl.textContent = user.nama || "Administrator";
+    if (avatarEl) avatarEl.textContent = (user.nama || "A").charAt(0).toUpperCase();
+  }
+
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    location.replace("/login.html");
+  }
+
+  function startLiveClock() {
+    function update() {
+      const now = new Date();
+      const el = document.getElementById("live_clock");
+      if (el) {
+        el.textContent = "🕒 " + now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
     }
-  })();
+    update();
+    setInterval(update, 1000);
+  }
+  startLiveClock();
+
+  async function checkHealth() {
+    try {
+      const res = await fetch("/api/health");
+      const health = await res.json();
+      const pill = document.getElementById("db_status_pill");
+      if (pill) {
+        if (health.database_connected) {
+          pill.innerHTML = '<span class="status-pill status-online">🟢 Atlas Online</span>';
+        } else {
+          pill.innerHTML = '<span class="status-pill status-demo">⚠️ DB Offline</span>';
+        }
+      }
+    } catch(e) {}
+  }
+  checkHealth();
 
   const $ = (id) => document.getElementById(id);
   const rp = POS.rupiah;
@@ -124,9 +224,7 @@
       const res = await fetch(url, { headers: POS.authHeaders() });
       data = await res.json();
       if (res.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        location.replace("/login.html");
+        logout();
         return;
       }
       if (!res.ok) throw new Error(data.error || "Gagal memuat laporan");
