@@ -22,6 +22,20 @@
     let allBooks = [];
     let categoriesList = [];
     let currentUser = Auth.user || { username: "", nama: "", role: "" };
+    let tarifPajak = 0;
+
+    // Hitungan keranjang (tampilan saja; server menghitung ulang saat checkout)
+    function cartSubtotal() {
+      return currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+    }
+
+    function cartPajak() {
+      return Math.round(cartSubtotal() * tarifPajak);
+    }
+
+    function cartTotal() {
+      return cartSubtotal() + cartPajak();
+    }
 
     // Format Rupiah (Tanpa Desimal, sesuai Kamus Data)
     function formatRupiah(amount) {
@@ -51,16 +65,19 @@
       } catch (e) { }
     }
 
-    // API Helper
+    // API Helper (mengirim token login)
     async function apiCall(endpoint, method = "GET", body = null) {
-      const options = {
-        method,
-        headers: { "Content-Type": "application/json" }
-      };
+      const headers = { "Content-Type": "application/json" };
+      const token = localStorage.getItem("token");
+      if (token) headers["Authorization"] = "Bearer " + token;
+      const options = { method, headers };
       if (body) options.body = JSON.stringify(body);
       try {
         const res = await fetch("/api" + endpoint, options);
         const data = await res.json();
+        if (res.status === 401) {
+          Auth.logout();
+        }
         if (!res.ok) {
           throw new Error(data.error || "Gagal melakukan permintaan (" + res.status + ")");
         }
@@ -69,6 +86,17 @@
         console.error("API Error (" + endpoint + "):", err);
         throw err;
       }
+    }
+
+    // Ambil tarif pajak dari server
+    async function loadConfig() {
+      try {
+        const cfg = await apiCall("/config");
+        tarifPajak = Number(cfg.tarif_pajak) || 0;
+      } catch (e) {
+        tarifPajak = 0;
+      }
+      renderCart();
     }
 
     // Cek Koneksi DB
@@ -205,15 +233,20 @@
         table.parse(currentCart);
       }
 
-      const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+      const subtotal = cartSubtotal();
+      const pajak = cartPajak();
+      const total = subtotal + pajak;
       const totalItems = currentCart.reduce((sum, i) => sum + i.qty, 0);
 
       if ($$("total_display")) {
+        const rincian = tarifPajak > 0
+          ? 'Subtotal ' + formatRupiah(subtotal) + ' + Pajak ' + formatRupiah(pajak)
+          : 'Total ' + totalItems + ' buku di keranjang';
         $$("total_display").setHTML(
           '<div class="total-due-box">' +
           '<div class="total-due-label">Total Tagihan</div>' +
           '<div class="total-due-amount">' + formatRupiah(total) + '</div>' +
-          '<div style="font-size:11px; margin-top:4px; opacity:0.85;">Total ' + totalItems + ' buku di keranjang</div>' +
+          '<div style="font-size:11px; margin-top:4px; opacity:0.85;">' + rincian + '</div>' +
           '</div>'
         );
       }
@@ -227,7 +260,7 @@
 
     // Hitung Kembalian
     function updateChangeDue() {
-      const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = cartTotal();
       const method = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
       const cashInput = $$("cash_input");
       const changeLabel = $$("change_due_label");
@@ -257,7 +290,7 @@
 
     // Shortcut Tombol Uang Cepat (Rupiah Presets)
     function setQuickCash(amount) {
-      const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = cartTotal();
       if ($$("cash_input")) {
         if (amount === "pas") {
           $$("cash_input").setValue(total > 0 ? String(total) : "");
@@ -275,7 +308,7 @@
         return;
       }
 
-      const total = currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = cartTotal();
       const paymentMethod = $$("payment_method").getValue();
       let cashReceived = total;
 
@@ -347,6 +380,10 @@
         '<div class="receipt-row"><span>Pembayaran:</span><span style="text-transform:uppercase; font-weight:700;">' + tx.metode_pembayaran + '</span></div>' +
         '<div class="receipt-divider"></div>' +
         itemsHtml +
+        (tx.pajak > 0 ?
+          '<div class="receipt-row"><span>Subtotal:</span><span>' + formatRupiah(tx.subtotal) + '</span></div>' +
+          '<div class="receipt-row"><span>Pajak (' + Math.round(tx.tarif_pajak * 100) + '%):</span><span>' + formatRupiah(tx.pajak) + '</span></div>'
+          : '') +
         '<div class="receipt-total-row">' +
         '<span>TOTAL AKHIR</span>' +
         '<span>' + formatRupiah(tx.total) + '</span>' +
@@ -511,6 +548,13 @@
                 hidden: currentUser.role !== "admin",
                 click: () => window.location.href = "master.html"
               },
+              ...(currentUser.role === "admin" ? [{
+                view: "button",
+                value: "Laporan",
+                css: "nav-btn",
+                autowidth: true,
+                click: () => window.location.href = "laporan.html"
+              }] : []),
               {},
               {
                 id: "db_status_pill",
@@ -853,6 +897,7 @@
       // Init Data
       startLiveClock();
       checkHealth();
+      loadConfig();
       loadCategories();
       loadCatalog();
       renderCart();

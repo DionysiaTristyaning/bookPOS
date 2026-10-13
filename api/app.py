@@ -3,6 +3,7 @@ import sys
 import re
 import uuid
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from flask import Flask, request, jsonify, send_from_directory, Blueprint
 from flask_cors import CORS
 from bson import ObjectId
@@ -1156,206 +1157,332 @@ def toggle_user_active(user_id):
         return jsonify(resp)
 
 # ----------------- POS TRANSAKSI & CHECKOUT -----------------
+WIB = timezone(timedelta(hours=7))
+TARIF_PAJAK = float(os.getenv("TARIF_PAJAK", "0"))
+
+
+def format_rupiah(angka):
+    return "Rp " + f"{int(angka):,}".replace(",", ".")
+
+
+def get_auth_user():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    try:
+        return jwt.decode(header[7:], os.environ["JWT_SECRET"], algorithms=["HS256"])
+    except Exception:
+        return None
+
+
+def hitung_pajak(subtotal):
+    tarif = Decimal(str(TARIF_PAJAK))
+    return int((Decimal(subtotal) * tarif).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def gabung_keranjang(items):
+    if not items or not isinstance(items, list):
+        return None, "Keranjang belanja kosong."
+    gabungan = {}
+    for it in items:
+        try:
+            qty = int(it.get("qty", 1))
+        except (ValueError, TypeError, AttributeError):
+            return None, "Jumlah item tidak valid."
+        book_id = str(it.get("id", "")).strip()
+        if qty <= 0 or not book_id:
+            return None, f"Item keranjang tidak valid ({it.get('judul', 'Buku')})."
+        gabungan[book_id] = gabungan.get(book_id, 0) + qty
+    return gabungan, None
+
+
+def _ambil_buku(book_id):
+    if is_live_db():
+        doc = get_db().books.find_one({"_id": ObjectId(book_id)})
+        return serialize_doc(doc) if doc else None
+    return next((b for b in _in_memory_books if b["id"] == book_id), None)
+
+
+def _kurangi_stok(book_id, qty):
+    waktu = datetime.now(WIB).isoformat()
+    if is_live_db():
+        hasil = get_db().books.update_one(
+            {"_id": ObjectId(book_id), "aktif": True, "stok": {"$gte": qty}},
+            {"$inc": {"stok": -qty}, "$set": {"updated_at": waktu}},
+        )
+        return hasil.modified_count == 1
+    buku = next(b for b in _in_memory_books if b["id"] == book_id)
+    if not buku.get("aktif", True) or buku["stok"] < qty:
+        return False
+    buku["stok"] -= qty
+    buku["updated_at"] = waktu
+    return True
+
+
+def _kembalikan_stok(daftar):
+    for v in daftar:
+        if is_live_db():
+            get_db().books.update_one(
+                {"_id": ObjectId(v["buku_id"])},
+                {"$inc": {"stok": v["qty"]}},
+            )
+        else:
+            buku = next(b for b in _in_memory_books if b["id"] == v["buku_id"])
+            buku["stok"] += v["qty"]
+
+
+def _simpan_transaksi(doc):
+    if is_live_db():
+        hasil = get_db().transactions.insert_one(doc)
+        doc["id"] = str(hasil.inserted_id)
+        doc.pop("_id", None)
+    else:
+        doc["id"] = f"tx-{len(_in_memory_transactions) + 1}"
+        _in_memory_transactions.insert(0, doc)
+
+
+@api_bp.route("/config", methods=["GET"])
+def get_config():
+    return jsonify({"tarif_pajak": TARIF_PAJAK})
+
+
 @api_bp.route("/checkout", methods=["POST"])
 def checkout():
+    denied = check_auth("admin", "kasir")
+    if denied:
+        return denied
+
     data = request.get_json() or {}
-    items = data.get("items", [])
-    metode_pembayaran = str(data.get("metode_pembayaran", "tunai")).lower()
-    kasir_nama = str(data.get("kasir_nama", "Kasir 1")).strip()
-
-    if not items or not isinstance(items, list):
-        return jsonify({"error": "Keranjang belanja kosong."}), 400
-
+    metode = str(data.get("metode_pembayaran", "tunai")).lower()
+    pengguna = get_auth_user()
+    kasir_nama = pengguna["username"] if pengguna else str(data.get("kasir_nama", "Kasir 1")).strip()
     try:
         tunai_diterima = int(data.get("tunai_diterima", 0))
     except (ValueError, TypeError):
         tunai_diterima = 0
 
-    validated_items = []
-    total = 0
+    gabungan, galat = gabung_keranjang(data.get("items"))
+    if galat:
+        return jsonify({"error": galat}), 400
 
-    if is_live_db():
-        db = get_db()
-        for it in items:
-            book_id = it.get("id")
-            qty = int(it.get("qty", 1))
-            if qty <= 0:
-                return jsonify({"error": f"Jumlah tidak valid untuk {it.get('judul', 'Buku')}"}), 400
-
-            try:
-                oid = ObjectId(book_id)
-            except Exception:
-                return jsonify({"error": "ID Buku tidak valid"}), 400
-
-            book = db.books.find_one({"_id": oid})
-            if not book:
-                return jsonify({"error": f"Buku '{it.get('judul')}' tidak ditemukan"}), 404
-
-            if not book.get("aktif", True):
-                return jsonify({"error": f"Buku '{book.get('judul')}' berstatus nonaktif dan tidak dapat dijual."}), 400
-
-            if book.get("stok", 0) < qty:
-                return jsonify({
-                    "error": f"Stok tidak mencukupi untuk '{book['judul']}'. Tersedia: {book.get('stok', 0)}, Diminta: {qty}"
-                }), 400
-
-            harga_jual = int(book.get("harga_jual", 0))
-            subtotal = harga_jual * qty
-            total += subtotal
-
-            validated_items.append({
-                "buku_id": str(book["_id"]),
-                "isbn": book.get("isbn", ""),
-                "judul": book.get("judul", ""),
-                "penulis": book.get("penulis", ""),
-                "harga_jual": harga_jual,
-                "qty": qty,
-                "subtotal": subtotal
-            })
-
-        if metode_pembayaran == "tunai" and tunai_diterima < total:
+    items = []
+    subtotal = 0
+    for book_id, qty in gabungan.items():
+        try:
+            buku = _ambil_buku(book_id)
+        except Exception:
+            return jsonify({"error": "ID buku tidak valid"}), 400
+        if not buku:
+            return jsonify({"error": "Buku tidak ditemukan"}), 404
+        if not buku.get("aktif", True):
+            return jsonify({"error": f"Buku '{buku.get('judul')}' berstatus nonaktif dan tidak dapat dijual."}), 400
+        if buku.get("stok", 0) < qty:
             return jsonify({
-                "error": f"Uang tunai (Rp {tunai_diterima:,}) kurang dari total tagihan (Rp {total:,})"
+                "error": f"Stok tidak mencukupi untuk '{buku['judul']}'. Tersedia: {buku.get('stok', 0)}, diminta: {qty}"
             }), 400
+        harga = int(buku.get("harga_jual", 0))
+        sub = harga * qty
+        subtotal += sub
+        items.append({
+            "buku_id": book_id,
+            "isbn": buku.get("isbn", ""),
+            "judul": buku.get("judul", ""),
+            "penulis": buku.get("penulis", ""),
+            "harga_jual": harga,
+            "qty": qty,
+            "subtotal": sub,
+        })
 
-        kembalian = (tunai_diterima - total) if metode_pembayaran == "tunai" else 0
-
-        # Pengurangan stok atomik (Sesuai Aturan 70)
-        for v in validated_items:
-            db.books.update_one(
-                {"_id": ObjectId(v["buku_id"])},
-                {"$inc": {"stok": -v["qty"]}, "$set": {"updated_at": datetime.now().isoformat()}}
-            )
-
-        now = datetime.now()
-        seq = str(uuid.uuid4())[:6].upper()
-        no_faktur = f"INV-{now.strftime('%Y%m%d%H%M')}-{seq}"
-
-        tx_doc = {
-            "no_faktur": no_faktur,
-            "items": validated_items,
-            "total": total,
-            "metode_pembayaran": metode_pembayaran,
-            "tunai_diterima": tunai_diterima if metode_pembayaran == "tunai" else total,
-            "kembalian": kembalian,
-            "kasir_nama": kasir_nama,
-            "created_at": now.isoformat()
-        }
-
-        res = db.transactions.insert_one(tx_doc)
-        tx_doc["id"] = str(res.inserted_id)
-        if "_id" in tx_doc:
-            del tx_doc["_id"]
-
+    pajak = hitung_pajak(subtotal)
+    total = subtotal + pajak
+    if metode == "tunai" and tunai_diterima < total:
         return jsonify({
-            "success": True,
-            "message": "Transaksi berhasil disimpan!",
-            "transaction": tx_doc
-        }), 201
+            "error": f"Uang tunai ({format_rupiah(tunai_diterima)}) kurang dari total tagihan ({format_rupiah(total)})"
+        }), 400
+    kembalian = (tunai_diterima - total) if metode == "tunai" else 0
 
-    else:
-        # In-Memory
-        for it in items:
-            book_id = it.get("id")
-            qty = int(it.get("qty", 1))
-            if qty <= 0:
-                return jsonify({"error": f"Jumlah tidak valid untuk {it.get('judul', 'Buku')}"}), 400
-
-            book = next((b for b in _in_memory_books if b["id"] == book_id), None)
-            if not book:
-                return jsonify({"error": f"Buku '{it.get('judul')}' tidak ditemukan"}), 404
-
-            if not book.get("aktif", True):
-                return jsonify({"error": f"Buku '{book.get('judul')}' berstatus nonaktif dan tidak dapat dijual."}), 400
-
-            if book.get("stok", 0) < qty:
-                return jsonify({
-                    "error": f"Stok tidak mencukupi untuk '{book['judul']}'. Tersedia: {book.get('stok', 0)}, Diminta: {qty}"
-                }), 400
-
-            harga_jual = int(book.get("harga_jual", 0))
-            subtotal = harga_jual * qty
-            total += subtotal
-
-            validated_items.append({
-                "buku_id": book["id"],
-                "isbn": book.get("isbn", ""),
-                "judul": book.get("judul", ""),
-                "penulis": book.get("penulis", ""),
-                "harga_jual": harga_jual,
-                "qty": qty,
-                "subtotal": subtotal
-            })
-
-        if metode_pembayaran == "tunai" and tunai_diterima < total:
+    dikurangi = []
+    for v in items:
+        if not _kurangi_stok(v["buku_id"], v["qty"]):
+            _kembalikan_stok(dikurangi)
             return jsonify({
-                "error": f"Uang tunai (Rp {tunai_diterima:,}) kurang dari total tagihan (Rp {total:,})"
-            }), 400
+                "error": f"Stok '{v['judul']}' baru saja berubah dan tidak cukup. Muat ulang daftar buku lalu coba lagi."
+            }), 409
+        dikurangi.append(v)
 
-        kembalian = (tunai_diterima - total) if metode_pembayaran == "tunai" else 0
+    sekarang = datetime.now(WIB)
+    tx_doc = {
+        "no_faktur": f"INV-{sekarang.strftime('%Y%m%d%H%M')}-{str(uuid.uuid4())[:6].upper()}",
+        "items": items,
+        "subtotal": subtotal,
+        "tarif_pajak": TARIF_PAJAK,
+        "pajak": pajak,
+        "total": total,
+        "metode_pembayaran": metode,
+        "tunai_diterima": tunai_diterima if metode == "tunai" else total,
+        "kembalian": kembalian,
+        "kasir_nama": kasir_nama,
+        "created_at": sekarang.isoformat(),
+    }
+    try:
+        _simpan_transaksi(tx_doc)
+    except Exception as e:
+        print(f"[Checkout] gagal menyimpan nota: {e}")
+        _kembalikan_stok(dikurangi)
+        return jsonify({"error": "Transaksi gagal disimpan, stok dikembalikan."}), 500
 
-        for v in validated_items:
-            b = next(b for b in _in_memory_books if b["id"] == v["buku_id"])
-            b["stok"] -= v["qty"]
-            b["updated_at"] = datetime.now().isoformat()
+    return jsonify({
+        "success": True,
+        "message": "Transaksi berhasil disimpan!",
+        "transaction": tx_doc,
+    }), 201
 
-        now = datetime.now()
-        seq = str(uuid.uuid4())[:6].upper()
-        no_faktur = f"INV-{now.strftime('%Y%m%d%H%M')}-{seq}"
-
-        tx_doc = {
-            "id": f"tx-{len(_in_memory_transactions) + 1}",
-            "no_faktur": no_faktur,
-            "items": validated_items,
-            "total": total,
-            "metode_pembayaran": metode_pembayaran,
-            "tunai_diterima": tunai_diterima if metode_pembayaran == "tunai" else total,
-            "kembalian": kembalian,
-            "kasir_nama": kasir_nama,
-            "created_at": now.isoformat()
-        }
-
-        _in_memory_transactions.insert(0, tx_doc)
-
-        return jsonify({
-            "success": True,
-            "message": "Transaksi berhasil disimpan!",
-            "transaction": tx_doc
-        }), 201
 
 @api_bp.route("/transactions", methods=["GET"])
 def get_transactions():
-    limit = int(request.args.get("limit", 50))
+    denied = check_auth()
+    if denied:
+        return denied
+
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    except ValueError:
+        limit = 50
+
     if is_live_db():
-        db = get_db()
-        docs = list(db.transactions.find().sort("created_at", -1).limit(limit))
+        docs = list(get_db().transactions.find().sort("created_at", -1).limit(limit))
         return jsonify(serialize_docs(docs))
-    else:
-        return jsonify(_in_memory_transactions[:limit])
+    return jsonify(_in_memory_transactions[:limit])
+
 
 @api_bp.route("/transactions/<invoice_or_id>", methods=["GET"])
 def get_transaction_detail(invoice_or_id):
+    denied = check_auth()
+    if denied:
+        return denied
+
     if is_live_db():
-        db = get_db()
         query = {"no_faktur": invoice_or_id}
         try:
             query = {"$or": [{"no_faktur": invoice_or_id}, {"_id": ObjectId(invoice_or_id)}]}
         except Exception:
             pass
-        doc = db.transactions.find_one(query)
+        doc = get_db().transactions.find_one(query)
         if not doc:
             return jsonify({"error": "Transaksi tidak ditemukan"}), 404
         return jsonify(serialize_doc(doc))
+
+    tx = next(
+        (t for t in _in_memory_transactions
+         if t["no_faktur"] == invoice_or_id or t.get("id") == invoice_or_id),
+        None,
+    )
+    if not tx:
+        return jsonify({"error": "Transaksi tidak ditemukan"}), 404
+    return jsonify(tx)
+
+
+def _parse_tanggal(teks, default):
+    try:
+        return datetime.strptime(teks or "", "%Y-%m-%d").date()
+    except ValueError:
+        return default
+
+
+def rangkum_transaksi(transaksi, dari, sampai):
+    ringkasan = {"jumlah_transaksi": len(transaksi), "buku_terjual": 0, "omzet": 0, "pajak": 0, "total": 0}
+
+    per_hari = {}
+    hari = dari
+    while hari <= sampai:
+        per_hari[hari.isoformat()] = {"tanggal": hari.isoformat(), "jumlah": 0, "total": 0}
+        hari += timedelta(days=1)
+
+    per_metode = {}
+    terlaris = {}
+
+    for t in transaksi:
+        total = int(t.get("total", 0))
+        pajak = int(t.get("pajak", 0))
+        subtotal = int(t.get("subtotal", total - pajak))
+        items = t.get("items", [])
+
+        ringkasan["total"] += total
+        ringkasan["pajak"] += pajak
+        ringkasan["omzet"] += subtotal
+        ringkasan["buku_terjual"] += sum(int(i.get("qty", 0)) for i in items)
+
+        tanggal = str(t.get("created_at", ""))[:10]
+        if tanggal in per_hari:
+            per_hari[tanggal]["jumlah"] += 1
+            per_hari[tanggal]["total"] += total
+
+        baris_metode = per_metode.setdefault(t.get("metode_pembayaran", "tunai"), {"jumlah": 0, "total": 0})
+        baris_metode["jumlah"] += 1
+        baris_metode["total"] += total
+
+        for i in items:
+            baris_buku = terlaris.setdefault(i.get("isbn", ""), {
+                "isbn": i.get("isbn", ""),
+                "judul": i.get("judul", ""),
+                "qty": 0,
+                "pendapatan": 0,
+            })
+            baris_buku["qty"] += int(i.get("qty", 0))
+            baris_buku["pendapatan"] += int(i.get("subtotal", 0))
+
+    terbaru = sorted(transaksi, key=lambda t: str(t.get("created_at", "")), reverse=True)[:10]
+
+    return {
+        "ringkasan": ringkasan,
+        "per_hari": list(per_hari.values()),
+        "per_metode": sorted(
+            ({"metode": k, **v} for k, v in per_metode.items()),
+            key=lambda x: -x["total"],
+        ),
+        "terlaris": sorted(terlaris.values(), key=lambda x: (-x["qty"], x["judul"]))[:5],
+        "terbaru": [
+            {k: t.get(k) for k in ("no_faktur", "created_at", "metode_pembayaran", "total", "kasir_nama")}
+            for t in terbaru
+        ],
+    }
+
+
+@api_bp.route("/reports/summary", methods=["GET"])
+def report_summary():
+    denied = check_auth("admin")
+    if denied:
+        return denied
+
+    hari_ini = datetime.now(WIB).date()
+    dari = _parse_tanggal(request.args.get("dari"), hari_ini - timedelta(days=6))
+    sampai = _parse_tanggal(request.args.get("sampai"), hari_ini)
+    if dari > sampai:
+        return jsonify({"error": "Tanggal 'dari' tidak boleh setelah 'sampai'"}), 400
+    if (sampai - dari).days > 366:
+        return jsonify({"error": "Rentang laporan maksimal 1 tahun"}), 400
+
+    batas_awal = dari.isoformat()
+    batas_akhir = (sampai + timedelta(days=1)).isoformat()
+
+    if is_live_db():
+        dokumen = get_db().transactions.find({"created_at": {"$gte": batas_awal, "$lt": batas_akhir}})
+        transaksi = serialize_docs(list(dokumen))
     else:
-        tx = next((t for t in _in_memory_transactions if t["no_faktur"] == invoice_or_id or t.get("id") == invoice_or_id), None)
-        if not tx:
-            return jsonify({"error": "Transaksi tidak ditemukan"}), 404
-        return jsonify(tx)
+        transaksi = [
+            t for t in _in_memory_transactions
+            if batas_awal <= str(t.get("created_at", "")) < batas_akhir
+        ]
+
+    return jsonify(rangkum_transaksi(transaksi, dari, sampai))
 
 # ----------------- STATISTIK & KPI -----------------
 @api_bp.route("/stats", methods=["GET"])
 def get_stats():
-    now_date = datetime.now().strftime("%Y-%m-%d")
+    denied = check_auth()
+    if denied:
+        return denied
+    now_date = datetime.now(WIB).strftime("%Y-%m-%d")
     if is_live_db():
         db = get_db()
         books = list(db.books.find({"aktif": True}))
@@ -1445,3 +1572,4 @@ if __name__ == "__main__":
     print(f" - Cek Status API:    http://127.0.0.1:{port}/api/health")
     print("==========================================\n")
     app.run(host="0.0.0.0", port=port, debug=True)
+
