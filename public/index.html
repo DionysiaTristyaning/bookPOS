@@ -258,22 +258,34 @@
       updateChangeDue();
     }
 
+    // Helper ekstraksi input uang diterima
+    function getCleanCashInput() {
+      const input = $$("cash_input");
+      if (!input) return { raw: "", val: 0 };
+      const str = String(input.getValue() ?? "").trim();
+      const clean = str.replace(/[^0-9]/g, "");
+      return { raw: clean, val: parseInt(clean, 10) || 0 };
+    }
+
     // Hitung Kembalian
     function updateChangeDue() {
       const total = cartTotal();
       const method = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
-      const cashInput = $$("cash_input");
       const changeLabel = $$("change_due_label");
 
       if (!changeLabel) return;
 
+      const { raw, val: cashVal } = getCleanCashInput();
+
       if (method !== "tunai") {
-        changeLabel.setHTML('<div style="font-size:11px; color:#64748b; padding-top:6px;">Tidak ada kembalian untuk <b>' + method.toUpperCase() + '</b></div>');
+        if (raw && cashVal < total) {
+          const diff = cashVal - total;
+          changeLabel.setHTML('<div style="font-size:11px; color:#dc2626;">Kurang (' + method.toUpperCase() + '):<br><b style="font-size:15px; color:#ef4444;">-' + formatRupiah(Math.abs(diff)) + '</b></div>');
+        } else {
+          changeLabel.setHTML('<div style="font-size:11px; color:#64748b; padding-top:6px;">Uang pas untuk <b>' + method.toUpperCase() + '</b><br><b style="font-size:14px; color:#0f172a;">' + formatRupiah(total) + '</b></div>');
+        }
         return;
       }
-
-      const rawCash = cashInput ? cashInput.getValue().replace(/[^0-9]/g, "") : "0";
-      const cashVal = parseInt(rawCash) || 0;
 
       if (cashVal === 0 && total === 0) {
         changeLabel.setHTML('<div style="font-size:11px; color:#64748b;">Kembalian:<br><b style="font-size:14px; color:#0f172a;">Rp 0</b></div>');
@@ -309,19 +321,31 @@
       }
 
       const total = cartTotal();
-      const paymentMethod = $$("payment_method").getValue();
+      const paymentMethod = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
+      const { raw: rawCash, val: cashEntered } = getCleanCashInput();
       let cashReceived = total;
 
       if (paymentMethod === "tunai") {
-        const rawVal = $$("cash_input").getValue().replace(/[^0-9]/g, "");
-        cashReceived = parseInt(rawVal) || 0;
-        if (cashReceived < total) {
+        if (!rawCash || cashEntered < total) {
           webix.message({
             type: "error",
-            text: "Uang tunai (" + formatRupiah(cashReceived) + ") kurang dari total tagihan (" + formatRupiah(total) + ")!"
+            text: "Uang tunai (" + formatRupiah(cashEntered) + ") kurang dari total tagihan (" + formatRupiah(total) + ")!"
           });
+          if ($$("cash_input")) $$("cash_input").focus();
           return;
         }
+        cashReceived = cashEntered;
+      } else {
+        // Non-tunai (kartu, qris): jika kasir memasukkan nominal di bawah tagihan, tolak transaksi!
+        if (rawCash && cashEntered < total) {
+          webix.message({
+            type: "error",
+            text: "Nominal pembayaran " + paymentMethod.toUpperCase() + " (" + formatRupiah(cashEntered) + ") kurang dari total tagihan (" + formatRupiah(total) + ")!"
+          });
+          if ($$("cash_input")) $$("cash_input").focus();
+          return;
+        }
+        cashReceived = total;
       }
 
       webix.extend($$("main_layout"), webix.ProgressBar);
@@ -831,7 +855,13 @@
                           { id: "qris", value: "📱 QRIS" }
                         ],
                         on: {
-                          onChange: () => updateChangeDue()
+                          onChange: function(newVal) {
+                            if (newVal !== "tunai" && $$("cash_input")) {
+                              const total = cartTotal();
+                              if (total > 0) $$("cash_input").setValue(String(total));
+                            }
+                            updateChangeDue();
+                          }
                         }
                       },
                       {

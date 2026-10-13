@@ -61,6 +61,29 @@ class UjiCheckout(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertEqual(self.stok("book-1"), 24)
 
+    def test_kartu_nominal_kurang_ditolak(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai=1000, metode="kartu")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(self.stok("book-1"), 24)
+
+    def test_qris_nominal_kurang_ditolak(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai=50000, metode="qris")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(self.stok("book-1"), 24)
+
+    def test_kartu_uang_pas_berhasil(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai=85000, metode="kartu")
+        self.assertEqual(res.status_code, 201)
+        tx = res.get_json()["transaction"]
+        self.assertEqual(tx["total"], 85000)
+        self.assertEqual(tx["kembalian"], 0)
+
+    def test_tunai_string_nominal_kurang_ditolak(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai="50.000", metode="tunai")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("kurang", res.get_json()["error"])
+
+
     def test_keranjang_kosong(self):
         self.assertEqual(self.kirim([]).status_code, 400)
 

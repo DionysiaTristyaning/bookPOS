@@ -1170,9 +1170,10 @@ def get_auth_user():
     if not header.startswith("Bearer "):
         return None
     try:
-        return jwt.decode(header[7:], os.environ["JWT_SECRET"], algorithms=["HS256"])
+        return jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
     except Exception:
         return None
+
 
 
 def hitung_pajak(subtotal):
@@ -1253,13 +1254,15 @@ def checkout():
         return denied
 
     data = request.get_json() or {}
-    metode = str(data.get("metode_pembayaran", "tunai")).lower()
+    metode = str(data.get("metode_pembayaran", "tunai")).strip().lower()
+    if metode in ("cash", "uang tunai"):
+        metode = "tunai"
+
     pengguna = get_auth_user()
     kasir_nama = pengguna["username"] if pengguna else str(data.get("kasir_nama", "Kasir 1")).strip()
-    try:
-        tunai_diterima = int(data.get("tunai_diterima", 0))
-    except (ValueError, TypeError):
-        tunai_diterima = 0
+
+    tunai_diterima_raw = data.get("tunai_diterima")
+    tunai_diterima = parse_int_safe(tunai_diterima_raw, default=0)
 
     gabungan, galat = gabung_keranjang(data.get("items"))
     if galat:
@@ -1295,11 +1298,23 @@ def checkout():
 
     pajak = hitung_pajak(subtotal)
     total = subtotal + pajak
-    if metode == "tunai" and tunai_diterima < total:
-        return jsonify({
-            "error": f"Uang tunai ({format_rupiah(tunai_diterima)}) kurang dari total tagihan ({format_rupiah(total)})"
-        }), 400
-    kembalian = (tunai_diterima - total) if metode == "tunai" else 0
+
+    # Validasi ketat nominal pembayaran: nominal tidak boleh kurang dari total tagihan
+    if metode == "tunai":
+        if tunai_diterima < total:
+            return jsonify({
+                "error": f"Uang tunai ({format_rupiah(tunai_diterima)}) kurang dari total tagihan ({format_rupiah(total)})"
+            }), 400
+        kembalian = tunai_diterima - total
+    else:
+        # Untuk non-tunai (kartu, qris, debit, dll): jika nominal disertakan, dilarang kurang dari total
+        if tunai_diterima_raw is not None and str(tunai_diterima_raw).strip() != "":
+            if tunai_diterima < total:
+                return jsonify({
+                    "error": f"Nominal pembayaran {metode.upper()} ({format_rupiah(tunai_diterima)}) kurang dari total tagihan ({format_rupiah(total)})"
+                }), 400
+        tunai_diterima = total
+        kembalian = 0
 
     dikurangi = []
     for v in items:
