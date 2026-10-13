@@ -45,10 +45,13 @@
         method,
         headers: { "Content-Type": "application/json" }
       };
+      const token = localStorage.getItem("token");
+      if (token) options.headers["Authorization"] = "Bearer " + token;
       if (body) options.body = JSON.stringify(body);
       try {
         const res = await fetch("/api" + endpoint, options);
         const data = await res.json();
+        if (res.status === 401) { Auth.logout(); return; }
         if (!res.ok) {
           const err = new Error(data.error || "Gagal (" + res.status + ")");
           err.data = data;
@@ -65,17 +68,15 @@
     async function checkHealth() {
       try {
         const health = await apiCall("/health");
-        const pill = document.getElementById("db_status_pill") || ($$("db_status_pill") ? $$("db_status_pill").$view : null);
-        if (pill) {
-          if (health.database_connected) {
-            pill.innerHTML = '<span class="status-pill status-online">🟢 Atlas Online</span>';
-          } else {
-            pill.innerHTML = '<span class="status-pill status-demo" title="' + (health.error || "DB Terputus") + '">⚠️ DB Offline</span>';
-          }
+        const el = document.getElementById("db_status_pill");
+        if (el) {
+          el.innerHTML = health.database_connected
+            ? '<span class="status-pill status-online">● Online</span>'
+            : '<span class="status-pill status-offline">⚠ Offline</span>';
         }
       } catch (e) {
-        const pill = document.getElementById("db_status_pill");
-        if (pill) pill.innerHTML = '<span class="status-pill status-demo">⚠️ API Offline</span>';
+        const el = document.getElementById("db_status_pill");
+        if (el) el.innerHTML = '<span class="status-pill status-offline">⚠ API</span>';
       }
     }
 
@@ -83,12 +84,7 @@
     function startLiveClock() {
       function update() {
         const el = document.getElementById("live_clock");
-        const now = new Date();
-        const tgl = now.toLocaleDateString("id-ID", { weekday: 'short', day: 'numeric', month: 'short' });
-        const jam = now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const text = "🕒 " + tgl + " " + jam;
-        if (el) el.textContent = text;
-        else if ($$("live_clock")) $$("live_clock").setValue(text);
+        if (el) el.textContent = new Date().toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", second:"2-digit" });
       }
       update();
       setInterval(update, 1000);
@@ -704,56 +700,51 @@
         cols: [
           // 1. SIDEBAR NAVIGASI KIRI
           {
-            width: 240,
+            width: 220,
             view: "template",
             borderless: true,
             css: "pos-sidebar-container",
             template: function () {
-              const initial = ((Auth.user?.nama) || "A").charAt(0).toUpperCase();
+              const init = ((Auth.user?.nama) || "A").charAt(0).toUpperCase();
               return `
-                <div class="sidebar-wrapper">
-                  <div class="sidebar-brand">
-                    <div class="sidebar-brand-icon">📚</div>
-                    <div class="sidebar-brand-text">
-                      <span class="sidebar-brand-title">BookPOS <span class="brand-pro-tag">PRO</span></span>
-                      <span class="sidebar-brand-subtitle">Smart Retail System</span>
-                    </div>
-                  </div>
-
-                  <div class="sidebar-menu-links">
-                    <a href="index.html" class="sidebar-link">
-                      <span class="nav-icon">🛒</span>
-                      <span class="nav-label">Kasir (POS)</span>
-                    </a>
-                    <a href="master.html" class="sidebar-link active">
-                      <span class="nav-icon">📦</span>
-                      <span class="nav-label">Master Data Buku</span>
-                      <span class="nav-badge-pill">Admin</span>
-                    </a>
-                    <a href="laporan.html" class="sidebar-link">
-                      <span class="nav-icon">📊</span>
-                      <span class="nav-label">Laporan Penjualan</span>
-                    </a>
-                  </div>
-
-                  <div class="sidebar-footer-section">
-                    <div class="sidebar-user-card">
-                      <div class="user-avatar">${initial}</div>
-                      <div class="user-details">
-                        <div class="user-name" title="${Auth.user?.nama || 'Admin'}">${Auth.user?.nama || 'Admin'}</div>
-                        <div class="user-role-badge">${(Auth.user?.role || 'admin').toUpperCase()}</div>
-                      </div>
-                      <button type="button" class="logout-icon-btn" onclick="Auth.logout()" title="Keluar dari Akun">
-                        🚪 Keluar
-                      </button>
-                    </div>
-                    <div class="sidebar-meta-row">
-                      <span id="live_clock" class="sidebar-clock-row">🕒 --:--</span>
-                      <span id="db_status_pill"><span class="status-pill status-demo">Mengecek DB...</span></span>
-                    </div>
-                  </div>
-                </div>
-              `;
+<div class="sidebar-inner">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon">📚</div>
+    <div>
+      <div class="sidebar-brand-name">BookPOS</div>
+      <div class="sidebar-brand-sub">Manajemen Toko</div>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label-section">Menu</div>
+    <a href="/" class="sidebar-link">
+      <span class="nav-icon">🛒</span>
+      <span class="nav-text">Kasir / POS</span>
+    </a>
+    <a href="/master.html" class="sidebar-link active">
+      <span class="nav-icon">📦</span>
+      <span class="nav-text">Master Data</span>
+    </a>
+    <a href="/laporan.html" class="sidebar-link">
+      <span class="nav-icon">📊</span>
+      <span class="nav-text">Laporan</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="user-avatar">${init}</div>
+      <div class="user-info">
+        <div class="user-name">${Auth.user?.nama || 'Admin'}</div>
+        <div class="user-role">${(Auth.user?.role || 'admin').toUpperCase()}</div>
+      </div>
+      <button class="btn-logout" onclick="Auth.logout()">Keluar</button>
+    </div>
+    <div class="sidebar-meta">
+      <div class="sidebar-clock" id="live_clock">00:00:00</div>
+      <div id="db_status_pill"><span class="status-pill status-offline">Memeriksa...</span></div>
+    </div>
+  </div>
+</div>`;
             }
           },
 
@@ -763,30 +754,15 @@
               // Topbar Header Master
               {
                 view: "toolbar",
-                height: 50,
+                height: 48,
                 css: "pos-topbar",
                 cols: [
                   {
                     view: "label",
-                    label: '<span class="page-title-badge">📦 Kelola Master Data Buku</span>',
+                    label: '<span style="font-size:14px;font-weight:700;color:#111;">📦 Master Data Buku</span>',
                     autowidth: true
                   },
-                  {},
-                  {
-                    view: "button",
-                    value: "🛒 Terminal Kasir (POS)",
-                    autowidth: true,
-                    css: "secondary-toolbar-btn",
-                    click: () => window.location.href = "index.html"
-                  },
-                  { width: 6 },
-                  {
-                    view: "button",
-                    value: "📊 Laporan Penjualan",
-                    autowidth: true,
-                    css: "secondary-toolbar-btn",
-                    click: () => window.location.href = "laporan.html"
-                  }
+                  {}
                 ]
               },
 
@@ -868,13 +844,6 @@
                 click: () => loadBooks()
               },
               {},
-              {
-                view: "button",
-                value: "⚡ Seed Data",
-                autowidth: true,
-                click: seedCatalog
-              },
-              { width: 4 },
               {
                 view: "button",
                 value: "📂 Kelola Kategori",
