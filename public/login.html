@@ -18,7 +18,13 @@
 
     <script>
         // Sudah login? Langsung masuk.
-        if (localStorage.getItem("token")) location.replace("/master.html");
+        const token = localStorage.getItem("token");
+        if (token) {
+            let user;
+            try { user = JSON.parse(localStorage.getItem("user")); } catch { }
+            location.replace(user?.role === "admin" ? "/master.html" : "/");
+        }
+
 
         document.getElementById("f").addEventListener("submit", async (e) => {
             e.preventDefault();

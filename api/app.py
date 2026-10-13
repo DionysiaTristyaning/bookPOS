@@ -193,6 +193,17 @@ _in_memory_transactions = []
 # Blueprint API
 api_bp = Blueprint("api_bp", __name__)
 
+JWT_SECRET = os.getenv("JWT_SECRET", "bookpos-default-jwt-secret-key-change-in-prod")
+
+def get_auth_user():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    try:
+        return jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        return None
+
 def create_token(user):
     payload = {
         "sub": str(user["id"]),
@@ -200,7 +211,7 @@ def create_token(user):
         "role": user["role"],
         "exp": datetime.now(timezone.utc) + timedelta(hours=int(os.getenv("JWT_EXPIRES_HOURS", "8"))),
     }
-    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm="HS256")
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 
 def check_auth(*roles):
@@ -211,7 +222,7 @@ def check_auth(*roles):
     if not header.startswith("Bearer "):
         return jsonify({"error": "Login diperlukan"}), 401
     try:
-        payload = jwt.decode(header[7:], os.environ["JWT_SECRET"], algorithms=["HS256"])
+        payload = jwt.decode(header[7:], JWT_SECRET, algorithms=["HS256"])
     except jwt.InvalidTokenError:
         return jsonify({"error": "Token tidak valid atau kedaluwarsa"}), 401
     if roles and payload.get("role") not in roles:
@@ -221,6 +232,15 @@ def check_auth(*roles):
 def is_live_db():
     status = get_connection_status()
     return status.get("connected", False)
+
+def parse_int_safe(val, default=0):
+    """Sanitasi integer rupiah: menangani int, float, atau string dengan titik ribuan."""
+    if val is None or val == "":
+        return default
+    if isinstance(val, (int, float)):
+        return int(val)
+    cleaned = re.sub(r"[^\d]", "", str(val).strip())
+    return int(cleaned) if cleaned else default
 
 # ----------------- KATEGORI MAPPING HELPER -----------------
 def get_categories_map():
@@ -692,13 +712,13 @@ def create_book():
 
     # Harga integer rupiah tanpa desimal (Aturan 18, 19, 54)
     try:
-        harga_beli = int(data.get("harga_beli", 0))
-        harga_jual = int(data.get("harga_jual", 0))
+        harga_beli = parse_int_safe(data.get("harga_beli", 0))
+        harga_jual = parse_int_safe(data.get("harga_jual", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Harga beli dan harga jual harus berupa bilangan bulat (integer Rupiah)"}), 400
 
     try:
-        stok = int(data.get("stok", 0))
+        stok = parse_int_safe(data.get("stok", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Stok harus berupa bilangan bulat (minimal 0)"}), 400
 
@@ -808,8 +828,8 @@ def update_book(book_id):
         return jsonify({"error": "Kategori wajib dipilih"}), 400
 
     try:
-        harga_beli = int(data.get("harga_beli", 0))
-        harga_jual = int(data.get("harga_jual", 0))
+        harga_beli = parse_int_safe(data.get("harga_beli", 0))
+        harga_jual = parse_int_safe(data.get("harga_jual", 0))
     except (ValueError, TypeError):
         return jsonify({"error": "Harga beli dan harga jual harus berupa bilangan bulat (integer Rupiah)"}), 400
 
@@ -1102,6 +1122,7 @@ def toggle_user_active(user_id):
     if denied:
         return denied
         
+    current_user = get_auth_user()
     now = datetime.now()
     if is_live_db():
         db = get_db()
@@ -1112,6 +1133,8 @@ def toggle_user_active(user_id):
         user = db.users.find_one({"_id": oid})
         if not user:
             return jsonify({"error": "User tidak ditemukan"}), 404
+        if current_user and (str(current_user.get("sub")) == str(user["_id"]) or current_user.get("username") == user.get("username")):
+            return jsonify({"error": "Anda tidak dapat menonaktifkan akun sendiri"}), 400
 
         new_status = not user.get("aktif", True)
         db.users.update_one(
@@ -1124,6 +1147,9 @@ def toggle_user_active(user_id):
         user = next((u for u in _in_memory_users if u["id"] == user_id), None)
         if not user:
             return jsonify({"error": "User tidak ditemukan"}), 404
+        if current_user and (str(current_user.get("sub")) == str(user["id"]) or current_user.get("username") == user.get("username")):
+            return jsonify({"error": "Anda tidak dapat menonaktifkan akun sendiri"}), 400
+
         user["aktif"] = not user.get("aktif", True)
         user["updated_at"] = now.isoformat()
         resp = dict(user)
