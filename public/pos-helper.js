@@ -43,6 +43,10 @@
   }
 
   async function checkout(items, metode, tunaiDiterima) {
+    const { total } = hitungTotal(items);
+    if (tunaiDiterima !== undefined && tunaiDiterima !== null && tunaiDiterima !== "" && Number(tunaiDiterima) < total) {
+      throw new Error("Nominal pembayaran (" + rupiah(tunaiDiterima) + ") kurang dari total tagihan (" + rupiah(total) + ")");
+    }
     const res = await fetch("/api/checkout", {
       method: "POST",
       headers: authHeaders(),

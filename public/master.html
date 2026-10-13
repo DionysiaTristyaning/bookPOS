@@ -5,6 +5,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BookPOS - Master Data Buku & Inventaris</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Webix UI Framework via CDN -->
   <link rel="stylesheet" href="https://cdn.webix.com/edge/webix.min.css" type="text/css">
   <script src="https://cdn.webix.com/edge/webix.min.js" type="text/javascript"></script>
@@ -45,10 +48,13 @@
         method,
         headers: { "Content-Type": "application/json" }
       };
+      const token = localStorage.getItem("token");
+      if (token) options.headers["Authorization"] = "Bearer " + token;
       if (body) options.body = JSON.stringify(body);
       try {
         const res = await fetch("/api" + endpoint, options);
         const data = await res.json();
+        if (res.status === 401) { Auth.logout(); return; }
         if (!res.ok) {
           const err = new Error(data.error || "Gagal (" + res.status + ")");
           err.data = data;
@@ -65,27 +71,27 @@
     async function checkHealth() {
       try {
         const health = await apiCall("/health");
-        const pill = $$("db_status_pill");
-        if (pill) {
-          if (health.database_connected) {
-            pill.setHTML('<span class="status-pill status-online">● MongoDB Atlas Online</span>');
-          } else {
-            pill.setHTML('<span class="status-pill status-demo" title="' + (health.error || "Demo Mode") + '">⚡ Demo Mode (In-Memory)</span>');
-          }
+        const el = document.getElementById("db_status_pill");
+        if (el) {
+          el.innerHTML = health.database_connected
+            ? '<span class="status-pill status-online">🟢 Atlas Online</span>'
+            : '<span class="status-pill status-offline">⚠️ DB Terputus</span>';
         }
       } catch (e) {
-        const pill = $$("db_status_pill");
-        if (pill) pill.setHTML('<span class="status-pill status-demo">⚠️ API Offline</span>');
+        const el = document.getElementById("db_status_pill");
+        if (el) el.innerHTML = '<span class="status-pill status-offline">⚠️ Offline</span>';
       }
     }
 
     // Live Clock
     function startLiveClock() {
       function update() {
-        const clock = $$("live_clock");
-        if (clock) {
+        const el = document.getElementById("live_clock");
+        if (el) {
           const now = new Date();
-          clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+          const tgl = now.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
+          const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          el.textContent = "🕒 " + tgl + " " + jam;
         }
       }
       update();
@@ -696,74 +702,81 @@
     webix.ready(function () {
       if (Auth.user?.role !== "admin") return;
 
+      webix.ui.fullScreen();
       webix.ui({
         id: "master_layout",
-        rows: [
-          // Top Navigation Header
+        cols: [
+          // 1. SIDEBAR NAVIGASI KIRI
           {
-            view: "toolbar",
-            height: 52,
-            css: "app-header",
-            cols: [
-              {
-                view: "label",
-                autowidth: true,
-                label: '<span class="brand-title">📚 BookPOS <span class="brand-badge">MVP</span></span>'
-              },
-              { width: 10 },
-              {
-                view: "button",
-                value: "🛒 Kasir (POS)",
-                css: "nav-btn",
-                autowidth: true,
-                click: () => window.location.href = "index.html"
-              },
-              {
-                view: "button",
-                value: "📦 Master Data Buku",
-                css: "nav-btn active",
-                autowidth: true
-              },
-              {
-                view: "button",
-                value: "📊 Laporan",
-                css: "nav-btn",
-                autowidth: true,
-                click: () => window.location.href = "laporan.html"
-              },
-              {},
-              {
-                id: "db_status_pill",
-                view: "template",
-                borderless: true,
-                width: 170,
-                template: '<span class="status-pill status-demo">Mengecek DB...</span>'
-              },
-              { width: 4 },
-              {
-                id: "user_info_label",
-                view: "label",
-                autowidth: true,
-                label: '👤 ' + (Auth.user?.nama || "Admin") + ' (' + (Auth.user?.role || "admin") + ')',
-                css: "user-tag"
-              },
-              { width: 4 },
-              {
-                id: "live_clock",
-                view: "label",
-                autowidth: true,
-                label: "",
-                css: "clock-text"
-              },
-              { width: 4 },
-              {
-                view: "button",
-                value: "Logout",
-                autowidth: true,
-                click: () => Auth.logout()
-              }
-            ]
+            width: 220,
+            view: "template",
+            borderless: true,
+            css: "pos-sidebar-container",
+            template: function () {
+              const init = ((Auth.user?.nama) || "A").charAt(0).toUpperCase();
+              return `
+<div class="sidebar-inner">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon">📚</div>
+    <div>
+      <div class="sidebar-brand-name">BookPOS</div>
+      <div class="sidebar-brand-sub">Point of Sale</div>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label-section">Menu</div>
+    <a href="/" class="sidebar-link">
+      <span class="nav-icon">🛒</span>
+      <span class="nav-text">Kasir / POS</span>
+    </a>
+    <a href="/master.html" class="sidebar-link active">
+      <span class="nav-icon">📦</span>
+      <span class="nav-text">Master Data</span>
+    </a>
+    <a href="/laporan.html" class="sidebar-link">
+      <span class="nav-icon">📊</span>
+      <span class="nav-text">Laporan</span>
+    </a>
+    <a href="/?history=1" class="sidebar-link">
+      <span class="nav-icon">📜</span>
+      <span class="nav-text">Riwayat Nota</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="user-avatar">${init}</div>
+      <div class="user-info">
+        <div class="user-name">${Auth.user?.nama || 'Admin'}</div>
+        <div class="user-role">${(Auth.user?.role || 'admin').toUpperCase()}</div>
+      </div>
+      <button class="btn-logout" onclick="Auth.logout()">Keluar</button>
+    </div>
+    <div class="sidebar-meta">
+      <div class="sidebar-clock" id="live_clock">🕒 --:--</div>
+      <div id="db_status_pill"><span class="status-pill status-offline">Memeriksa...</span></div>
+    </div>
+  </div>
+</div>`;
+            }
           },
+
+          // 2. WORKSPACE AREA UTAMA
+          {
+            rows: [
+              // Topbar Header Master
+              {
+                view: "toolbar",
+                height: 48,
+                css: "pos-topbar",
+                cols: [
+                  {
+                    view: "label",
+                    label: '<span style="font-size:14px;font-weight:700;color:#111;">📦 Master Data Buku</span>',
+                    autowidth: true
+                  },
+                  {}
+                ]
+              },
 
           // Header Kartu KPI Statistik
           {
@@ -843,13 +856,6 @@
                 click: () => loadBooks()
               },
               {},
-              {
-                view: "button",
-                value: "⚡ Seed Data",
-                autowidth: true,
-                click: seedCatalog
-              },
-              { width: 4 },
               {
                 view: "button",
                 value: "📂 Kelola Kategori",
@@ -987,7 +993,9 @@
             }
           }
         ]
-      });
+      }
+    ]
+  });
 
       // Modal: Tambah / Edit Buku Window
       webix.ui({
@@ -1051,9 +1059,11 @@
       });
 
       // Init Data
+      startLiveClock();
       checkHealth();
       loadCategories();
       loadBooks();
+      loadStats();
     });
   </script>
 </body>

@@ -8,20 +8,129 @@ os.environ.setdefault("JWT_SECRET", "rahasia-untuk-uji")
 
 import api.app as m
 
-m.is_live_db = lambda: False
+MOCK_BOOKS_INIT = [
+    {
+        "id": "book-1",
+        "judul": "Laskar Pelangi",
+        "pengarang": "Andrea Hirata",
+        "penerbit": "Bentang Pustaka",
+        "tahun_terbit": 2005,
+        "kategori": "Fiksi",
+        "isbn": "9786020000001",
+        "harga_beli": 60000,
+        "harga_jual": 85000,
+        "stok": 24,
+        "aktif": True,
+    },
+    {
+        "id": "book-7",
+        "judul": "Habis Gelap Terbitlah Terang",
+        "pengarang": "R.A. Kartini",
+        "penerbit": "Balai Pustaka",
+        "tahun_terbit": 1922,
+        "kategori": "Sejarah",
+        "isbn": "9786020000007",
+        "harga_beli": 35000,
+        "harga_jual": 50000,
+        "stok": 0,
+        "aktif": True,
+    },
+    {
+        "id": "book-8",
+        "judul": "Arsip Arsip Lama",
+        "pengarang": "Anonim",
+        "penerbit": "Arsip Nasional",
+        "tahun_terbit": 1950,
+        "kategori": "Arsip",
+        "isbn": "9786020000008",
+        "harga_beli": 10000,
+        "harga_jual": 15000,
+        "stok": 5,
+        "aktif": False,
+    },
+]
 
-BUKU_ASLI = copy.deepcopy(m._in_memory_books)
+
+class UpdateResult:
+    def __init__(self, count):
+        self.modified_count = count
+
+
+class InsertResult:
+    def __init__(self, inserted_id):
+        self.inserted_id = inserted_id
+
+
+class MockCollection:
+    def __init__(self, data=None):
+        self.docs = copy.deepcopy(data or [])
+
+    def find_one(self, filt):
+        for doc in self.docs:
+            match = True
+            for k, v in filt.items():
+                if isinstance(v, dict):
+                    if "$gte" in v and doc.get(k, 0) < v["$gte"]:
+                        match = False
+                        break
+                elif doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                return copy.deepcopy(doc)
+        return None
+
+    def update_one(self, filt, update):
+        for doc in self.docs:
+            match = True
+            for k, v in filt.items():
+                if isinstance(v, dict):
+                    if "$gte" in v and doc.get(k, 0) < v["$gte"]:
+                        match = False
+                        break
+                elif doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                if "$inc" in update:
+                    for ik, iv in update["$inc"].items():
+                        doc[ik] = doc.get(ik, 0) + iv
+                if "$set" in update:
+                    for sk, sv in update["$set"].items():
+                        doc[sk] = sv
+                return UpdateResult(1)
+        return UpdateResult(0)
+
+    def insert_one(self, doc):
+        new_id = f"mock-id-{len(self.docs)+1}"
+        self.docs.append(copy.deepcopy(doc))
+        return InsertResult(new_id)
+
+    def find(self, filt=None):
+        return [copy.deepcopy(d) for d in self.docs]
+
+
+class MockDB:
+    def __init__(self):
+        self.books = MockCollection(MOCK_BOOKS_INIT)
+        self.transactions = MockCollection([])
+
+
+mock_db_instance = MockDB()
+m.is_live_db = lambda: True
+m.get_db = lambda: mock_db_instance
 
 
 class UjiCheckout(unittest.TestCase):
     def setUp(self):
-        m._in_memory_books[:] = copy.deepcopy(BUKU_ASLI)
-        m._in_memory_transactions[:] = []
+        mock_db_instance.books = MockCollection(MOCK_BOOKS_INIT)
+        mock_db_instance.transactions = MockCollection([])
         m.TARIF_PAJAK = 0
         self.client = m.app.test_client()
 
     def stok(self, book_id):
-        return next(b for b in m._in_memory_books if b["id"] == book_id)["stok"]
+        b = mock_db_instance.books.find_one({"id": book_id})
+        return b["stok"] if b else None
 
     def kirim(self, items, tunai=1000000, metode="tunai"):
         return self.client.post("/api/checkout", json={
@@ -60,6 +169,28 @@ class UjiCheckout(unittest.TestCase):
         res = self.kirim([{"id": "book-1", "qty": 1}], tunai=1000)
         self.assertEqual(res.status_code, 400)
         self.assertEqual(self.stok("book-1"), 24)
+
+    def test_kartu_nominal_kurang_ditolak(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai=1000, metode="kartu")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(self.stok("book-1"), 24)
+
+    def test_qris_nominal_kurang_ditolak(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai=50000, metode="qris")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(self.stok("book-1"), 24)
+
+    def test_kartu_uang_pas_berhasil(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai=85000, metode="kartu")
+        self.assertEqual(res.status_code, 201)
+        tx = res.get_json()["transaction"]
+        self.assertEqual(tx["total"], 85000)
+        self.assertEqual(tx["kembalian"], 0)
+
+    def test_tunai_string_nominal_kurang_ditolak(self):
+        res = self.kirim([{"id": "book-1", "qty": 1}], tunai="50.000", metode="tunai")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("kurang", res.get_json()["error"])
 
     def test_keranjang_kosong(self):
         self.assertEqual(self.kirim([]).status_code, 400)

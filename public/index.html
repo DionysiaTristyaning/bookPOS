@@ -1,908 +1,578 @@
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BookPOS - Kasir & Point of Sale</title>
-
+  <title>Kasir POS - BookPOS</title>
   <script src="/auth.js"></script>
-
-  <!-- Webix UI Framework via CDN -->
-  <link rel="stylesheet" href="https://cdn.webix.com/edge/webix.min.css" type="text/css">
-  <script src="https://cdn.webix.com/edge/webix.min.js" type="text/javascript"></script>
-  <!-- Custom Styles -->
-  <link rel="stylesheet" href="style.css" type="text/css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.webix.com/edge/webix.min.css">
+  <script src="https://cdn.webix.com/edge/webix.min.js"></script>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-  <script>
-    // State Aplikasi
-    let currentCart = [];
-    let allBooks = [];
-    let categoriesList = [];
-    let currentUser = Auth.user || { username: "", nama: "", role: "" };
-    let tarifPajak = 0;
+<script>
+  // State
+  let currentCart = [];
+  let allBooks = [];
+  let categoriesList = [];
+  let currentUser = Auth.user || { username: "", nama: "", role: "" };
+  let tarifPajak = 0;
 
-    // Hitungan keranjang (tampilan saja; server menghitung ulang saat checkout)
-    function cartSubtotal() {
-      return currentCart.reduce((sum, i) => sum + i.subtotal, 0);
+  function cartSubtotal() { return currentCart.reduce((s,i) => s + i.subtotal, 0); }
+  function cartPajak()    { return Math.round(cartSubtotal() * tarifPajak); }
+  function cartTotal()    { return cartSubtotal() + cartPajak(); }
+
+  function formatRupiah(n) { return "Rp\u00a0" + (parseInt(n)||0).toLocaleString("id-ID"); }
+  function cleanISBN(s)    { return String(s||"").replace(/[^0-9X]/gi,"").toUpperCase(); }
+
+  function playBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "sine"; osc.frequency.value = 880;
+      g.gain.setValueAtTime(0.1, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.start(); osc.stop(ctx.currentTime + 0.1);
+    } catch(e) {}
+  }
+
+  async function apiCall(endpoint, method="GET", body=null) {
+    const hdrs = { "Content-Type": "application/json" };
+    const token = localStorage.getItem("token");
+    if (token) hdrs["Authorization"] = "Bearer " + token;
+    const opts = { method, headers: hdrs };
+    if (body) opts.body = JSON.stringify(body);
+    const res  = await fetch("/api" + endpoint, opts);
+    const data = await res.json();
+    if (res.status === 401) Auth.logout();
+    if (!res.ok) throw new Error(data.error || "Gagal (" + res.status + ")");
+    return data;
+  }
+
+  async function loadConfig() {
+    try { const c = await apiCall("/config"); tarifPajak = Number(c.tarif_pajak)||0; } catch(e) {}
+    renderCart();
+  }
+
+  async function checkHealth() {
+    try {
+      const h = await apiCall("/health");
+      const el = document.getElementById("db_status_pill");
+      if (el) el.innerHTML = h.database_connected
+        ? '<span class="status-pill status-online">🟢 Atlas Online</span>'
+        : '<span class="status-pill status-offline">⚠️ DB Terputus</span>';
+    } catch(e) {
+      const el = document.getElementById("db_status_pill");
+      if (el) el.innerHTML = '<span class="status-pill status-offline">⚠️ Offline</span>';
     }
+  }
 
-    function cartPajak() {
-      return Math.round(cartSubtotal() * tarifPajak);
-    }
-
-    function cartTotal() {
-      return cartSubtotal() + cartPajak();
-    }
-
-    // Format Rupiah (Tanpa Desimal, sesuai Kamus Data)
-    function formatRupiah(amount) {
-      const num = parseInt(amount) || 0;
-      return "Rp " + num.toLocaleString("id-ID");
-    }
-
-    // Normalisasi ISBN di client (buang tanda hubung dan spasi)
-    function cleanISBN(str) {
-      return String(str || "").replace(/[^0-9X]/gi, "").toUpperCase();
-    }
-
-    // Audio Beep
-    function playBeep() {
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = "sine";
-        osc.frequency.value = 900;
-        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.12);
-      } catch (e) { }
-    }
-
-    // API Helper (mengirim token login)
-    async function apiCall(endpoint, method = "GET", body = null) {
-      const headers = { "Content-Type": "application/json" };
-      const token = localStorage.getItem("token");
-      if (token) headers["Authorization"] = "Bearer " + token;
-      const options = { method, headers };
-      if (body) options.body = JSON.stringify(body);
-      try {
-        const res = await fetch("/api" + endpoint, options);
-        const data = await res.json();
-        if (res.status === 401) {
-          Auth.logout();
-        }
-        if (!res.ok) {
-          throw new Error(data.error || "Gagal melakukan permintaan (" + res.status + ")");
-        }
-        return data;
-      } catch (err) {
-        console.error("API Error (" + endpoint + "):", err);
-        throw err;
+  async function loadCategories() {
+    try {
+      categoriesList = await apiCall("/categories");
+      const f = $$("category_filter");
+      if (f) {
+        f.define("options", [{ id:"all", value:"Semua Kategori" }, ...categoriesList.map(c=>({id:c.id,value:c.nama}))]);
+        f.refresh();
       }
+    } catch(e) {}
+  }
+
+  async function loadCatalog() {
+    try {
+      const search = $$("search_input") ? $$("search_input").getValue().trim() : "";
+      const catId  = $$("category_filter") ? $$("category_filter").getValue() : "all";
+      let url = "/books?status=aktif";
+      if (search) url += "&search=" + encodeURIComponent(search);
+      if (catId && catId !== "all") url += "&kategori_id=" + encodeURIComponent(catId);
+      allBooks = await apiCall(url);
+      const t = $$("catalog_table");
+      if (t) { t.clearAll(); t.parse(allBooks); }
+    } catch(err) {
+      webix.message({ type:"error", text:"Gagal memuat katalog: " + err.message });
     }
+  }
 
-    // Ambil tarif pajak dari server
-    async function loadConfig() {
-      try {
-        const cfg = await apiCall("/config");
-        tarifPajak = Number(cfg.tarif_pajak) || 0;
-      } catch (e) {
-        tarifPajak = 0;
-      }
-      renderCart();
+  function addToCart(book) {
+    if (!book || book.stok <= 0) { webix.message({ type:"error", text:"Stok habis!" }); return; }
+    const ex = currentCart.find(i => i.id === book.id);
+    if (ex) {
+      if (ex.qty >= book.stok) { webix.message({ type:"error", text:"Stok maks: " + book.stok }); return; }
+      ex.qty++; ex.subtotal = ex.qty * ex.harga_jual;
+    } else {
+      currentCart.push({ id:book.id, isbn:book.isbn, judul:book.judul, penulis:book.penulis,
+        harga_jual:parseInt(book.harga_jual)||0, stok:book.stok, qty:1, subtotal:parseInt(book.harga_jual)||0 });
     }
+    playBeep(); renderCart();
+    webix.message({ type:"success", text:'+ "' + book.judul.substring(0,28) + '"' });
+  }
 
-    // Cek Koneksi DB
-    async function checkHealth() {
-      try {
-        const health = await apiCall("/health");
-        const pill = $$("db_status_pill");
-        if (pill) {
-          if (health.database_connected) {
-            pill.setHTML('<span class="status-pill status-online">● MongoDB Atlas Online</span>');
-          } else {
-            pill.setHTML('<span class="status-pill status-demo" title="' + (health.error || "Demo Mode") + '">⚡ Demo Mode (In-Memory)</span>');
-          }
-        }
-      } catch (e) {
-        const pill = $$("db_status_pill");
-        if (pill) pill.setHTML('<span class="status-pill status-demo">⚠️ API Offline</span>');
-      }
+  function updateCartQty(bookId, delta) {
+    const idx = currentCart.findIndex(i => i.id === bookId);
+    if (idx === -1) return;
+    const item = currentCart[idx];
+    const nq = item.qty + delta;
+    if (nq <= 0) { currentCart.splice(idx, 1); }
+    else {
+      const bk = allBooks.find(b => b.id === bookId);
+      const mx = bk ? bk.stok : item.stok;
+      if (nq > mx) { webix.message({ type:"error", text:"Stok maks: " + mx }); return; }
+      item.qty = nq; item.subtotal = nq * item.harga_jual;
     }
+    renderCart();
+  }
 
-    // Muat Kategori untuk Filter
-    async function loadCategories() {
-      try {
-        categoriesList = await apiCall("/categories");
-        const filter = $$("category_filter");
-        if (filter) {
-          const opts = [{ id: "all", value: "Semua Kategori" }];
-          categoriesList.forEach(c => opts.push({ id: c.id, value: c.nama }));
-          filter.define("options", opts);
-          filter.refresh();
-        }
-      } catch (err) {
-        console.error("Gagal memuat kategori", err);
-      }
-    }
+  function removeCartItem(id) { currentCart = currentCart.filter(i => i.id !== id); renderCart(); }
 
-    // Muat Katalog Buku
-    async function loadCatalog() {
-      try {
-        const search = $$("search_input") ? $$("search_input").getValue().trim() : "";
-        const catId = $$("category_filter") ? $$("category_filter").getValue() : "all";
+  function clearCart() {
+    currentCart = []; renderCart();
+    if ($$("cash_input")) $$("cash_input").setValue("");
+    updateChangeDue();
+  }
 
-        let url = "/books?status=aktif&";
-        if (search) url += "search=" + encodeURIComponent(search) + "&";
-        if (catId && catId !== "all") url += "kategori_id=" + encodeURIComponent(catId);
+  function renderCart() {
+    const t = $$("cart_table");
+    if (t) { t.clearAll(); t.parse(currentCart); }
 
-        const books = await apiCall(url);
-        allBooks = books;
-        const table = $$("catalog_table");
-        if (table) {
-          table.clearAll();
-          table.parse(books);
-        }
-      } catch (err) {
-        webix.message({ type: "error", text: "Gagal memuat katalog buku: " + err.message });
-      }
-    }
+    const subtotal = cartSubtotal(), pajak = cartPajak(), total = subtotal + pajak;
+    const items = currentCart.reduce((s,i) => s+i.qty, 0);
 
-    // Tambah ke Keranjang
-    function addToCart(book) {
-      if (!book || book.stok <= 0) {
-        webix.message({ type: "error", text: "Buku habis (stok 0)!" });
-        return;
-      }
-
-      const existing = currentCart.find(i => i.id === book.id);
-      if (existing) {
-        if (existing.qty >= book.stok) {
-          webix.message({ type: "error", text: "Stok tidak mencukupi! Hanya tersedia " + book.stok + " eksemplar." });
-          return;
-        }
-        existing.qty += 1;
-        existing.subtotal = existing.qty * existing.harga_jual;
-      } else {
-        currentCart.push({
-          id: book.id,
-          isbn: book.isbn,
-          judul: book.judul,
-          penulis: book.penulis,
-          harga_jual: parseInt(book.harga_jual) || 0,
-          stok: book.stok,
-          qty: 1,
-          subtotal: parseInt(book.harga_jual) || 0
-        });
-      }
-
-      playBeep();
-      renderCart();
-      webix.message({ type: "success", text: 'Ditambahkan: "' + book.judul + '"' });
-    }
-
-    // Ubah Jumlah Item di Keranjang
-    function updateCartQty(bookId, delta) {
-      const itemIndex = currentCart.findIndex(i => i.id === bookId);
-      if (itemIndex === -1) return;
-
-      const item = currentCart[itemIndex];
-      const newQty = item.qty + delta;
-
-      if (newQty <= 0) {
-        currentCart.splice(itemIndex, 1);
-      } else {
-        const catalogBook = allBooks.find(b => b.id === bookId);
-        const maxStock = catalogBook ? catalogBook.stok : item.stok;
-        if (newQty > maxStock) {
-          webix.message({ type: "error", text: "Maksimal stok tercapai (" + maxStock + " eksemplar)" });
-          return;
-        }
-        item.qty = newQty;
-        item.subtotal = item.qty * item.harga_jual;
-      }
-      renderCart();
-    }
-
-    // Hapus Item dari Keranjang
-    function removeCartItem(bookId) {
-      currentCart = currentCart.filter(i => i.id !== bookId);
-      renderCart();
-    }
-
-    // Kosongkan Keranjang
-    function clearCart() {
-      currentCart = [];
-      renderCart();
-      if ($$("cash_input")) $$("cash_input").setValue("");
-      updateChangeDue();
-    }
-
-    // Render Tampilan Keranjang
-    function renderCart() {
-      const table = $$("cart_table");
-      if (table) {
-        table.clearAll();
-        table.parse(currentCart);
-      }
-
-      const subtotal = cartSubtotal();
-      const pajak = cartPajak();
-      const total = subtotal + pajak;
-      const totalItems = currentCart.reduce((sum, i) => sum + i.qty, 0);
-
-      if ($$("total_display")) {
-        const rincian = tarifPajak > 0
-          ? 'Subtotal ' + formatRupiah(subtotal) + ' + Pajak ' + formatRupiah(pajak)
-          : 'Total ' + totalItems + ' buku di keranjang';
-        $$("total_display").setHTML(
-          '<div class="total-due-box">' +
-          '<div class="total-due-label">Total Tagihan</div>' +
-          '<div class="total-due-amount">' + formatRupiah(total) + '</div>' +
-          '<div style="font-size:11px; margin-top:4px; opacity:0.85;">' + rincian + '</div>' +
-          '</div>'
-        );
-      }
-
-      if ($$("cart_header_label")) {
-        $$("cart_header_label").setValue("🛒 Keranjang (" + totalItems + " item)");
-      }
-
-      updateChangeDue();
-    }
-
-    // Hitung Kembalian
-    function updateChangeDue() {
-      const total = cartTotal();
-      const method = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
-      const cashInput = $$("cash_input");
-      const changeLabel = $$("change_due_label");
-
-      if (!changeLabel) return;
-
-      if (method !== "tunai") {
-        changeLabel.setHTML('<div style="font-size:11px; color:#64748b; padding-top:6px;">Tidak ada kembalian untuk <b>' + method.toUpperCase() + '</b></div>');
-        return;
-      }
-
-      const rawCash = cashInput ? cashInput.getValue().replace(/[^0-9]/g, "") : "0";
-      const cashVal = parseInt(rawCash) || 0;
-
-      if (cashVal === 0 && total === 0) {
-        changeLabel.setHTML('<div style="font-size:11px; color:#64748b;">Kembalian:<br><b style="font-size:14px; color:#0f172a;">Rp 0</b></div>');
-        return;
-      }
-
-      const diff = cashVal - total;
-      if (diff >= 0) {
-        changeLabel.setHTML('<div style="font-size:11px; color:#047857;">Kembalian:<br><b style="font-size:16px; color:#10b981;">+' + formatRupiah(diff) + '</b></div>');
-      } else {
-        changeLabel.setHTML('<div style="font-size:11px; color:#dc2626;">Kurang:<br><b style="font-size:15px; color:#ef4444;">-' + formatRupiah(Math.abs(diff)) + '</b></div>');
-      }
-    }
-
-    // Shortcut Tombol Uang Cepat (Rupiah Presets)
-    function setQuickCash(amount) {
-      const total = cartTotal();
-      if ($$("cash_input")) {
-        if (amount === "pas") {
-          $$("cash_input").setValue(total > 0 ? String(total) : "");
-        } else {
-          $$("cash_input").setValue(String(amount));
-        }
-      }
-      updateChangeDue();
-    }
-
-    // Proses Pembayaran (Checkout)
-    async function processCheckout() {
-      if (currentCart.length === 0) {
-        webix.message({ type: "error", text: "Keranjang masih kosong!" });
-        return;
-      }
-
-      const total = cartTotal();
-      const paymentMethod = $$("payment_method").getValue();
-      let cashReceived = total;
-
-      if (paymentMethod === "tunai") {
-        const rawVal = $$("cash_input").getValue().replace(/[^0-9]/g, "");
-        cashReceived = parseInt(rawVal) || 0;
-        if (cashReceived < total) {
-          webix.message({
-            type: "error",
-            text: "Uang tunai (" + formatRupiah(cashReceived) + ") kurang dari total tagihan (" + formatRupiah(total) + ")!"
-          });
-          return;
-        }
-      }
-
-      webix.extend($$("main_layout"), webix.ProgressBar);
-      $$("main_layout").showProgress({ type: "icon" });
-
-      try {
-        const payload = {
-          items: currentCart.map(item => ({
-            id: item.id,
-            isbn: item.isbn,
-            judul: item.judul,
-            qty: item.qty
-          })),
-          metode_pembayaran: paymentMethod,
-          tunai_diterima: cashReceived,
-          kasir_nama: currentUser.nama
-        };
-
-        const res = await apiCall("/checkout", "POST", payload);
-        $$("main_layout").hideProgress();
-
-        // Tampilkan Struk Thermal
-        showReceiptModal(res.transaction);
-
-        // Reset Keranjang & Refresh Katalog
-        clearCart();
-        await loadCatalog();
-        webix.message({ type: "success", text: "Transaksi Berhasil! No Faktur: " + res.transaction.no_faktur });
-      } catch (err) {
-        $$("main_layout").hideProgress();
-        webix.message({ type: "error", text: "Transaksi gagal: " + err.message });
-      }
-    }
-
-    // Modal Struk Thermal (Thermal Receipt)
-    function showReceiptModal(tx) {
-      const itemsHtml = (tx.items || []).map(item =>
-        '<div class="receipt-row">' +
-        '<div style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + item.judul + '</div>' +
-        '<div>' + item.qty + 'x ' + formatRupiah(item.harga_jual) + '</div>' +
-        '<div style="font-weight:700;">' + formatRupiah(item.subtotal) + '</div>' +
+    if ($$("total_display")) {
+      const detail = tarifPajak > 0
+        ? 'Sub ' + formatRupiah(subtotal) + ' + Pajak ' + formatRupiah(pajak)
+        : (items > 0 ? items + ' jenis buku' : 'Keranjang kosong');
+      $$("total_display").setHTML(
+        '<div class="total-due-box">' +
+        '<div class="total-due-label">TOTAL TAGIHAN</div>' +
+        '<div class="total-due-amount">' + formatRupiah(total) + '</div>' +
+        '<div class="total-due-detail">' + detail + '</div>' +
         '</div>'
-      ).join("");
+      );
+    }
+    if ($$("cart_header_label")) $$("cart_header_label").setValue("🛒 Keranjang (" + items + " item)");
+    updateChangeDue();
+  }
 
-      const receiptContent =
-        '<div class="receipt-paper" id="printable_receipt">' +
-        '<div class="receipt-header">' +
-        '<div class="receipt-store-name">📚 TOKO BUKU BOOKPOS</div>' +
-        '<div class="receipt-sub">Pusat Buku & Literatur Terlengkap</div>' +
-        '<div class="receipt-sub">Telp: 021-555-8989</div>' +
-        '</div>' +
-        '<div class="receipt-divider"></div>' +
-        '<div class="receipt-row"><span>No Faktur:</span><span style="font-weight:700;">' + tx.no_faktur + '</span></div>' +
-        '<div class="receipt-row"><span>Waktu:</span><span>' + new Date(tx.created_at).toLocaleString("id-ID") + '</span></div>' +
-        '<div class="receipt-row"><span>Kasir:</span><span>' + (tx.kasir_nama || "Kasir") + '</span></div>' +
-        '<div class="receipt-row"><span>Pembayaran:</span><span style="text-transform:uppercase; font-weight:700;">' + tx.metode_pembayaran + '</span></div>' +
-        '<div class="receipt-divider"></div>' +
-        itemsHtml +
-        (tx.pajak > 0 ?
-          '<div class="receipt-row"><span>Subtotal:</span><span>' + formatRupiah(tx.subtotal) + '</span></div>' +
-          '<div class="receipt-row"><span>Pajak (' + Math.round(tx.tarif_pajak * 100) + '%):</span><span>' + formatRupiah(tx.pajak) + '</span></div>'
-          : '') +
-        '<div class="receipt-total-row">' +
-        '<span>TOTAL AKHIR</span>' +
-        '<span>' + formatRupiah(tx.total) + '</span>' +
-        '</div>' +
-        (tx.metode_pembayaran === "tunai" ?
-          '<div class="receipt-row" style="margin-top:6px;"><span>Uang Tunai:</span><span>' + formatRupiah(tx.tunai_diterima) + '</span></div>' +
-          '<div class="receipt-row"><span>Kembalian:</span><span style="font-weight:700; color:#059669;">' + formatRupiah(tx.kembalian) + '</span></div>'
-          : '') +
-        '<div class="receipt-divider"></div>' +
-        '<div class="receipt-footer">' +
-        '<div>Terima kasih atas kunjungan Anda!</div>' +
-        '<div style="margin-top:4px;">Buku yang dibeli dapat ditukar max 7 hari dg membawa struk ini.</div>' +
-        '<div style="margin-top:8px; font-family:monospace; letter-spacing:3px; font-weight:bold;">*' + tx.no_faktur + '*</div>' +
-        '</div>' +
-        '</div>';
+  function getCleanCash() {
+    const s = String($$("cash_input") ? $$("cash_input").getValue() : "").replace(/[^0-9]/g,"");
+    return { raw:s, val:parseInt(s,10)||0 };
+  }
 
-      if ($$("receipt_window")) $$("receipt_window").destructor();
+  function updateChangeDue() {
+    const total  = cartTotal();
+    const method = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
+    const lbl    = $$("change_due_label");
+    if (!lbl) return;
+    const { raw, val } = getCleanCash();
 
+    if (method !== "tunai") {
+      if (raw && val < total) {
+        lbl.setHTML('<div class="change-box change-short"><span>Kurang Bayar:</span><b>' + formatRupiah(total - val) + '</b></div>');
+      } else {
+        lbl.setHTML('<div class="change-box"><span>Jumlah Tagihan:</span><b>' + formatRupiah(total) + '</b></div>');
+      }
+      return;
+    }
+    const diff = val - total;
+    if (diff >= 0) {
+      lbl.setHTML('<div class="change-box change-ok"><span>Kembalian:</span><b>' + formatRupiah(diff) + '</b></div>');
+    } else if (val === 0 && total === 0) {
+      lbl.setHTML('<div class="change-box"><span>Status Kembalian:</span><b>Rp 0</b></div>');
+    } else {
+      lbl.setHTML('<div class="change-box change-short"><span>Kurang Bayar:</span><b>' + formatRupiah(Math.abs(diff)) + '</b></div>');
+    }
+  }
+
+  function setQuickCash(amount) {
+    const total = cartTotal();
+    if ($$("cash_input")) $$("cash_input").setValue(amount === "pas" ? (total > 0 ? String(total) : "") : String(amount));
+    updateChangeDue();
+  }
+
+  async function processCheckout() {
+    if (!currentCart.length) { webix.message({ type:"error", text:"Keranjang kosong!" }); return; }
+    const total    = cartTotal();
+    const method   = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
+    const { raw, val } = getCleanCash();
+    let cashReceived = total;
+
+    if (method === "tunai") {
+      if (!raw || val < total) {
+        webix.message({ type:"error", text:"Uang tunai kurang! Tagihan: " + formatRupiah(total) });
+        if ($$("cash_input")) $$("cash_input").focus();
+        return;
+      }
+      cashReceived = val;
+    } else {
+      if (raw && val < total) {
+        webix.message({ type:"error", text:"Nominal " + method.toUpperCase() + " kurang dari tagihan " + formatRupiah(total) + "!" });
+        if ($$("cash_input")) $$("cash_input").focus();
+        return;
+      }
+    }
+
+    try {
+      webix.extend($$("main_layout"), webix.ProgressBar);
+      $$("main_layout").showProgress({ type:"icon" });
+      const res = await apiCall("/checkout", "POST", {
+        items: currentCart.map(i => ({ id:i.id, isbn:i.isbn, judul:i.judul, qty:i.qty })),
+        metode_pembayaran: method, tunai_diterima: cashReceived, kasir_nama: currentUser.nama
+      });
+      $$("main_layout").hideProgress();
+      showReceiptModal(res.transaction);
+      clearCart(); await loadCatalog();
+    } catch(err) {
+      $$("main_layout").hideProgress();
+      webix.message({ type:"error", text:"Transaksi gagal: " + err.message });
+    }
+  }
+
+  function showReceiptModal(tx) {
+    const itemsHtml = (tx.items||[]).map(i =>
+      '<div class="receipt-row">' +
+      '<div style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + i.judul + '</div>' +
+      '<div>' + i.qty + 'x</div>' +
+      '<div style="font-weight:700;">' + formatRupiah(i.subtotal) + '</div>' +
+      '</div>'
+    ).join("");
+    const html =
+      '<div class="receipt-paper" id="printable_receipt">' +
+      '<div class="receipt-header"><div class="receipt-store-name">📚 BOOKPOS</div>' +
+      '<div class="receipt-sub">Toko Buku & Literatur</div></div>' +
+      '<div class="receipt-divider"></div>' +
+      '<div class="receipt-row"><span>No. Faktur</span><span style="font-weight:700;">' + tx.no_faktur + '</span></div>' +
+      '<div class="receipt-row"><span>Waktu</span><span>' + new Date(tx.created_at).toLocaleString("id-ID") + '</span></div>' +
+      '<div class="receipt-row"><span>Kasir</span><span>' + (tx.kasir_nama||"Kasir") + '</span></div>' +
+      '<div class="receipt-row"><span>Metode</span><span style="text-transform:uppercase;font-weight:700;">' + tx.metode_pembayaran + '</span></div>' +
+      '<div class="receipt-divider"></div>' + itemsHtml +
+      (tx.pajak > 0
+        ? '<div class="receipt-row"><span>Subtotal</span><span>' + formatRupiah(tx.subtotal) + '</span></div>' +
+          '<div class="receipt-row"><span>Pajak</span><span>' + formatRupiah(tx.pajak) + '</span></div>'
+        : '') +
+      '<div class="receipt-total-row"><span>TOTAL</span><span>' + formatRupiah(tx.total) + '</span></div>' +
+      (tx.metode_pembayaran === "tunai"
+        ? '<div class="receipt-row" style="margin-top:4px;"><span>Tunai</span><span>' + formatRupiah(tx.tunai_diterima) + '</span></div>' +
+          '<div class="receipt-row"><span>Kembalian</span><span style="font-weight:700;color:#16a34a;">' + formatRupiah(tx.kembalian) + '</span></div>'
+        : '') +
+      '<div class="receipt-divider"></div>' +
+      '<div class="receipt-footer"><div>Terima kasih telah berbelanja!</div>' +
+      '<div style="margin-top:8px;letter-spacing:3px;font-weight:700;">*' + tx.no_faktur + '*</div></div>' +
+      '</div>';
+
+    if ($$("receipt_window")) $$("receipt_window").destructor();
+    webix.ui({
+      view:"window", id:"receipt_window", modal:true, position:"center", width:370,
+      head:{ view:"toolbar", cols:[
+        { view:"label", label:"🧾 Struk Pembayaran" },
+        { view:"icon", icon:"wxi-close", click:()=>$$("receipt_window").close() }
+      ]},
+      body:{ rows:[
+        { template:html, autoheight:true, scroll:"y", maxHeight:500 },
+        { view:"toolbar", css:"no-print", padding:8, cols:[
+          { view:"button", value:"🖨️ Cetak Struk", css:"webix_primary", click:()=>window.print() },
+          { view:"button", value:"➕ Transaksi Baru", click:()=>$$("receipt_window").close() }
+        ]}
+      ]}
+    }).show();
+  }
+
+  async function showSalesHistory() {
+    try {
+      const txs = await apiCall("/transactions?limit=30");
+      if ($$("history_window")) $$("history_window").destructor();
       webix.ui({
-        view: "window",
-        id: "receipt_window",
-        modal: true,
-        position: "center",
-        width: 390,
-        head: {
-          view: "toolbar",
-          cols: [
-            { view: "label", label: "🧾 Struk Pembayaran" },
-            { view: "icon", icon: "wxi-close", click: () => $$("receipt_window").close() }
-          ]
+        view:"window", id:"history_window", modal:true, position:"center", width:840, height:480,
+        head:{ view:"toolbar", cols:[
+          { view:"label", label:"📜 Riwayat Penjualan / Faktur" },
+          { view:"icon", icon:"wxi-close", click:()=>$$("history_window").close() }
+        ]},
+        body:{ rows:[{ view:"datatable", id:"history_table", data:txs, select:"row", rowHeight:40,
+          columns:[
+            { id:"no_faktur", header:"No. Faktur", width:210, template:o=>'<span style="font-weight:600;font-size:12px;color:#0f172a;">'+o.no_faktur+'</span>' },
+            { id:"created_at", header:"Waktu", width:160, template:o=>'<span style="font-size:12px;color:#475569;">'+new Date(o.created_at).toLocaleString("id-ID")+'</span>' },
+            { id:"items", header:"Item", width:80, template:o=>'<span style="font-size:12px;color:#334155;">'+(o.items||[]).length+' judul</span>' },
+            { id:"metode_pembayaran", header:"Metode", width:95, template:o=>'<span class="category-tag">'+o.metode_pembayaran.toUpperCase()+'</span>' },
+            { id:"total", header:"Total", width:130, template:o=>'<span style="font-weight:700;font-size:13px;color:#0f172a;">'+formatRupiah(o.total)+'</span>' },
+            { id:"act", header:"", width:85, template:()=>'<span class="action-btn" style="color:#2563eb;font-weight:600;font-size:12px;">Lihat ↗</span>' }
+          ],
+          on:{ onItemClick(id) { const r=this.getItem(id); if(r){$$("history_window").close(); showReceiptModal(r);} } }
+        }]}
+      }).show();
+    } catch(err) {
+      webix.message({ type:"error", text:"Gagal memuat riwayat: " + err.message });
+    }
+  }
+
+  function startLiveClock() {
+    const update = () => {
+      const el = document.getElementById("live_clock");
+      if (el) {
+        const now = new Date();
+        const tgl = now.toLocaleDateString("id-ID", { weekday:"short", day:"numeric", month:"short" });
+        const jam = now.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+        el.textContent = "🕒 " + tgl + " " + jam;
+      }
+    };
+    update(); setInterval(update, 1000);
+  }
+
+  // ===================== WEBIX UI =====================
+  webix.ready(function () {
+    webix.ui.fullScreen();
+    webix.ui({
+      id: "main_layout",
+      cols: [
+        // ── SIDEBAR ──
+        {
+          width: 220,
+          view: "template",
+          borderless: true,
+          css: "pos-sidebar-container",
+          template: function() {
+            const init = (currentUser.nama||"K").charAt(0).toUpperCase();
+            const isAdmin = currentUser.role === "admin";
+            return `
+<div class="sidebar-inner">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon">📚</div>
+    <div>
+      <div class="sidebar-brand-name">BookPOS</div>
+      <div class="sidebar-brand-sub">Point of Sale</div>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label-section">Menu</div>
+    <a href="/" class="sidebar-link active">
+      <span class="nav-icon">🛒</span>
+      <span class="nav-text">Kasir / POS</span>
+    </a>
+    ${isAdmin ? `
+    <a href="/master.html" class="sidebar-link">
+      <span class="nav-icon">📦</span>
+      <span class="nav-text">Master Data</span>
+    </a>
+    <a href="/laporan.html" class="sidebar-link">
+      <span class="nav-icon">📊</span>
+      <span class="nav-text">Laporan</span>
+    </a>` : ""}
+    <button onclick="showSalesHistory()" class="sidebar-link" style="border:none;width:100%;text-align:left;cursor:pointer;">
+      <span class="nav-icon">📜</span>
+      <span class="nav-text">Riwayat Nota</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="user-avatar">${init}</div>
+      <div class="user-info">
+        <div class="user-name">${currentUser.nama||"Kasir"}</div>
+        <div class="user-role">${(currentUser.role||"kasir").toUpperCase()}</div>
+      </div>
+      <button class="btn-logout" onclick="Auth.logout()">Keluar</button>
+    </div>
+    <div class="sidebar-meta">
+      <div id="live_clock" class="sidebar-clock">🕒 --:--</div>
+      <div id="db_status_pill"><span class="status-pill status-offline">Memeriksa...</span></div>
+    </div>
+  </div>
+</div>`;
+          }
         },
-        body: {
+
+        // ── MAIN WORKSPACE ──
+        {
           rows: [
+            // Top bar — NO keyboard hints
             {
-              template: receiptContent,
-              autoheight: true,
-              scroll: "y"
-            },
-            {
-              view: "toolbar",
-              css: "no-print",
-              padding: 10,
+              view: "toolbar", height: 48, css: "pos-topbar",
               cols: [
+                { view:"label", label:'<span style="font-size:14px;font-weight:700;color:#111;">🛒 Kasir &amp; Point of Sale</span>', autowidth:true },
+                {},
+                { view:"button", value:"🔄 Segarkan", autowidth:true, css:"secondary-toolbar-btn", click:()=>loadCatalog() }
+              ]
+            },
+
+            // POS Body: Catalog left + Cart right — full height, no empty white space
+            {
+              gravity: 1,
+              cols: [
+                // LEFT: Catalog (full height)
                 {
-                  view: "button",
-                  value: "🖨️ Cetak Struk (Print)",
-                  css: "webix_primary",
-                  click: () => window.print()
+                  gravity: 1,
+                  rows: [
+                    {
+                      view:"toolbar", padding:8,
+                      cols:[
+                        { view:"text", id:"search_input", placeholder:"🔍 Scan Barcode / cari Judul / Penulis...",
+                          on:{ onEnter() {
+                            const v = this.getValue().trim(), c = cleanISBN(v);
+                            const ex = allBooks.find(b=>b.isbn===c||cleanISBN(b.isbn)===c);
+                            if (ex) { addToCart(ex); this.setValue(""); } else loadCatalog();
+                          }}
+                        },
+                        { width:6 },
+                        { view:"select", id:"category_filter", width:155,
+                          options:[{id:"all",value:"Semua Kategori"}],
+                          on:{onChange:()=>loadCatalog()} },
+                        { width:6 },
+                        { view:"button", value:"Cari", width:65, css:"webix_primary", click:()=>loadCatalog() },
+                        { view:"button", value:"Reset", width:60, click(){
+                          $$("search_input").setValue(""); $$("category_filter").setValue("all"); loadCatalog();
+                        }}
+                      ]
+                    },
+                    {
+                      view:"datatable", id:"catalog_table", select:"row", rowHeight:46,
+                      gravity: 1,
+                      scroll:"y",
+                      columns:[
+                        { id:"isbn", header:"ISBN", width:130, template:o=>'<span class="isbn-text">'+o.isbn+'</span>' },
+                        { id:"judul", header:"Judul & Penulis", fillspace:true,
+                          template:o=>'<div style="line-height:1.3;padding:3px 0;">' +
+                            '<div style="font-weight:700;color:#111;font-size:13px;">'+o.judul+'</div>' +
+                            '<div style="font-size:11px;color:#6b7280;">'+o.penulis+(o.penerbit?' · '+o.penerbit:'')+'</div></div>' },
+                        { id:"kategori_nama", header:"Kategori", width:105, template:o=>'<span class="category-tag">'+(o.kategori_nama||"-")+'</span>' },
+                        { id:"harga_jual", header:"Harga", width:105, template:o=>'<span class="price-text">'+formatRupiah(o.harga_jual)+'</span>' },
+                        { id:"stok", header:"Stok", width:65,
+                          template:o=>{
+                            if(o.stok<=0) return '<span class="stock-badge stock-out">Habis</span>';
+                            if(o.stok<=5) return '<span class="stock-badge stock-low">'+o.stok+'</span>';
+                            return '<span class="stock-badge stock-in">'+o.stok+'</span>';
+                          }
+                        },
+                        { id:"act", header:"", width:105,
+                          template:o=>o.stok<=0
+                            ? '<div style="display:flex;align-items:center;justify-content:center;height:100%;"><button disabled class="action-btn stock-out-btn">Habis</button></div>'
+                            : '<div style="display:flex;align-items:center;justify-content:center;height:100%;"><button class="action-btn add-cart">+ Tambah</button></div>'
+                        }
+                      ],
+                      onClick:{ "add-cart"(e,id){ addToCart(this.getItem(id)); return false; } },
+                      on:{ onItemDblClick(id){ addToCart(this.getItem(id)); } }
+                    }
+                  ]
                 },
+
+                // RIGHT: Cart + Payment — full height with comfortably raised pay button
                 {
-                  view: "button",
-                  value: "➕ Transaksi Baru",
-                  click: () => $$("receipt_window").close()
+                  width: 420,
+                  borderless: false,
+                  rows: [
+                    // Cart header
+                    {
+                      view:"toolbar", height:40,
+                      cols:[
+                        { id:"cart_header_label", view:"label", label:"🛒 Keranjang (0 item)",
+                          autowidth:true, css:"cart-header-title" },
+                        {},
+                        { view:"button", value:"Kosongkan", width:90, css:"webix_danger", click:clearCart }
+                      ]
+                    },
+                    // Cart items (flexible gravity: 1 to fill available vertical space)
+                    {
+                      view:"datatable", id:"cart_table", gravity:1, minHeight:120, rowHeight:38,
+                      scroll:"y",
+                      columns:[
+                        { id:"judul", header:"Buku", fillspace:true,
+                          template:o=>'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:38px;">'+o.judul+'</div>' },
+                        { id:"qty", header:"Qty", width:85,
+                          template:o=>'<div style="display:flex;align-items:center;justify-content:center;gap:2px;height:38px;">' +
+                            '<button class="action-btn qty-minus" style="padding:1px 6px;border:1px solid #e2e8f0;border-radius:3px;">−</button>' +
+                            '<span style="font-weight:700;width:20px;text-align:center;font-size:12px;">'+o.qty+'</span>' +
+                            '<button class="action-btn qty-plus" style="padding:1px 6px;border:1px solid #e2e8f0;border-radius:3px;">+</button></div>' },
+                        { id:"subtotal", header:"Subtotal", width:100,
+                          template:o=>'<span style="font-size:12px;font-weight:700;display:block;text-align:right;line-height:38px;">'+formatRupiah(o.subtotal)+'</span>' },
+                        { id:"del", header:"", width:28, template:()=>'<span class="action-btn del" title="Hapus" style="color:#dc2626;font-size:13px;line-height:38px;display:block;text-align:center;">✕</span>' }
+                      ],
+                      onClick:{
+                        "qty-minus"(e,id){ updateCartQty(id.row,-1); return false; },
+                        "qty-plus"(e,id) { updateCartQty(id.row,1);  return false; },
+                        "del"(e,id)      { removeCartItem(id.row);   return false; }
+                      }
+                    },
+                    // Total display
+                    { id:"total_display", view:"template", height:72, borderless:true,
+                      template:'<div class="total-due-box"><div class="total-due-label">TOTAL TAGIHAN</div><div class="total-due-amount">Rp\u00a00</div><div class="total-due-detail">Keranjang kosong</div></div>' },
+                    // Payment form — comfortably positioned, pay button raised nicely above bottom edge
+                    {
+                      view:"form", id:"payment_form", padding:{top:4,right:10,bottom:8,left:10},
+                      elements:[
+                        // Payment method selector
+                        {
+                          view:"segmented", id:"payment_method", value:"tunai", height:32,
+                          options:[
+                            { id:"tunai", value:"💵 Tunai" },
+                            { id:"kartu", value:"💳 Kartu" },
+                            { id:"qris",  value:"📱 QRIS" }
+                          ],
+                          on:{ onChange(v) {
+                            if (v !== "tunai" && $$("cash_input")) {
+                              const t = cartTotal();
+                              if (t > 0) $$("cash_input").setValue(String(t));
+                            }
+                            updateChangeDue();
+                          }}
+                        },
+                        // Cash input — inline label, 34px height
+                        { view:"text", id:"cash_input",
+                          label:"Bayar (Rp):",
+                          labelWidth:85,
+                          height:34,
+                          placeholder:"0",
+                          keyPressTimeout:80,
+                          on:{
+                            onTimedKeyPress:()=>updateChangeDue(),
+                            onEnter:()=>processCheckout()
+                          }
+                        },
+                        // Change label — compact 30px
+                        { id:"change_due_label", view:"template", borderless:true, height:30,
+                          template:'<div class="change-box"><span>Status Kembalian:</span><b>Rp 0</b></div>' },
+                        // Quick cash — 2 rows of 3, 26px height
+                        {
+                          cols:[
+                            { view:"button", value:"Uang Pas", height:26, css:"quick-cash-btn", click:()=>setQuickCash("pas") },
+                            { view:"button", value:"50.000",   height:26, css:"quick-cash-btn", click:()=>setQuickCash(50000) },
+                            { view:"button", value:"100.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(100000) }
+                          ]
+                        },
+                        {
+                          cols:[
+                            { view:"button", value:"200.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(200000) },
+                            { view:"button", value:"500.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(500000) },
+                            { view:"button", value:"1.000.000", height:26, css:"quick-cash-btn", click:()=>setQuickCash(1000000) }
+                          ]
+                        },
+                        { height:4 },
+                        { id:"btn_checkout", view:"button",
+                          value:"💳 BAYAR & CETAK STRUK",
+                          height:42, css:"pay-btn", click:processCheckout }
+                      ]
+                    }
+                  ]
                 }
               ]
             }
           ]
         }
-      }).show();
-    }
-
-    // Modal Riwayat Transaksi
-    async function showSalesHistory() {
-      try {
-        const txs = await apiCall("/transactions?limit=30");
-
-        if ($$("history_window")) $$("history_window").destructor();
-
-        webix.ui({
-          view: "window",
-          id: "history_window",
-          modal: true,
-          position: "center",
-          width: 820,
-          height: 520,
-          head: {
-            view: "toolbar",
-            cols: [
-              { view: "label", label: "📜 Riwayat Penjualan Kasir" },
-              { view: "icon", icon: "wxi-close", click: () => $$("history_window").close() }
-            ]
-          },
-          body: {
-            rows: [
-              {
-                view: "datatable",
-                id: "history_table",
-                data: txs,
-                select: "row",
-                columns: [
-                  { id: "no_faktur", header: "No. Faktur", width: 220, css: "isbn-text" },
-                  { id: "created_at", header: "Waktu Transaksi", width: 170, template: obj => new Date(obj.created_at).toLocaleString("id-ID") },
-                  { id: "items", header: "Item", width: 80, template: obj => (obj.items || []).length + " judul" },
-                  { id: "metode_pembayaran", header: "Metode", width: 90, template: obj => '<span class="category-tag">' + (obj.metode_pembayaran || "").toUpperCase() + '</span>' },
-                  { id: "total", header: "Total", width: 130, template: obj => '<span class="price-text">' + formatRupiah(obj.total) + '</span>' },
-                  {
-                    id: "action",
-                    header: "Aksi",
-                    width: 90,
-                    template: () => '<span class="action-btn" style="color:#4f46e5; font-weight:700;">Lihat Struk ↗</span>'
-                  }
-                ],
-                on: {
-                  onItemClick: function (id) {
-                    const row = this.getItem(id);
-                    if (row) {
-                      $$("history_window").close();
-                      showReceiptModal(row);
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        }).show();
-      } catch (err) {
-        webix.message({ type: "error", text: "Gagal memuat riwayat: " + err.message });
-      }
-    }
-
-    // Live Clock
-    function startLiveClock() {
-      function update() {
-        const clock = $$("live_clock");
-        if (clock) {
-          const now = new Date();
-          clock.setValue(now.toLocaleDateString("id-ID") + " " + now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-        }
-      }
-      update();
-      setInterval(update, 1000);
-    }
-
-    // Webix Ready
-    webix.ready(function () {
-      webix.ui({
-        id: "main_layout",
-        rows: [
-          // Top Navigation Header
-          {
-            view: "toolbar",
-            height: 54,
-            css: "app-header",
-            cols: [
-              {
-                view: "label",
-                autowidth: true,
-                label: '<span class="brand-title">📚 BookPOS <span class="brand-badge">MVP</span></span>'
-              },
-              { width: 15 },
-              {
-                view: "button",
-                value: "🛒 Kasir (POS)",
-                css: "nav-btn active",
-                autowidth: true
-              },
-              {
-                view: "button",
-                value: "📦 Master Data Buku",
-                css: "nav-btn",
-                autowidth: true,
-                hidden: currentUser.role !== "admin",
-                click: () => window.location.href = "master.html"
-              },
-              ...(currentUser.role === "admin" ? [{
-                view: "button",
-                value: "Laporan",
-                css: "nav-btn",
-                autowidth: true,
-                click: () => window.location.href = "laporan.html"
-              }] : []),
-              {},
-              {
-                id: "db_status_pill",
-                view: "template",
-                borderless: true,
-                width: 220,
-                template: '<span class="status-pill status-demo">Mengecek DB...</span>'
-              },
-              {
-                id: "user_info_label",
-                view: "label",
-                autowidth: true,
-                label: '👤 ' + currentUser.nama + ' (' + currentUser.role + ')',
-                css: "user-tag"
-              },
-              {
-                id: "live_clock",
-                view: "label",
-                autowidth: true,
-                label: "",
-                css: "clock-text"
-              },
-              { width: 6 },
-              {
-                view: "button",
-                value: "📜 Riwayat Penjualan",
-                autowidth: true,
-                click: showSalesHistory
-              },
-              { width: 6 },
-              {
-                view: "button",
-                value: "Logout",
-                autowidth: true,
-                click: () => Auth.logout()
-              }
-            ]
-          },
-
-          // Main Layout 2 Kolom
-          {
-            cols: [
-              // Kolom Kiri: Katalog & Barcode Search
-              {
-                gravity: 1.4,
-                rows: [
-                  // Search Toolbar
-                  {
-                    view: "toolbar",
-                    padding: 10,
-                    cols: [
-                      {
-                        view: "text",
-                        id: "search_input",
-                        placeholder: "🔍 Scan Barcode/ISBN atau cari Judul / Penulis... (Tekan Enter)",
-                        on: {
-                          onEnter: function () {
-                            const val = this.getValue().trim();
-                            const cleaned = cleanISBN(val);
-                            // Cek kecocokan tepat ISBN
-                            const exact = allBooks.find(b => b.isbn === cleaned || cleanISBN(b.isbn) === cleaned);
-                            if (exact) {
-                              addToCart(exact);
-                              this.setValue("");
-                            } else {
-                              loadCatalog();
-                            }
-                          }
-                        }
-                      },
-                      { width: 10 },
-                      {
-                        view: "select",
-                        id: "category_filter",
-                        width: 170,
-                        options: [{ id: "all", value: "Semua Kategori" }],
-                        on: {
-                          onChange: () => loadCatalog()
-                        }
-                      },
-                      { width: 6 },
-                      {
-                        view: "button",
-                        value: "Cari",
-                        width: 80,
-                        css: "webix_primary",
-                        click: () => loadCatalog()
-                      },
-                      {
-                        view: "button",
-                        value: "Reset",
-                        width: 75,
-                        click: () => {
-                          $$("search_input").setValue("");
-                          $$("category_filter").setValue("all");
-                          loadCatalog();
-                        }
-                      }
-                    ]
-                  },
-
-                  // Tabel Katalog Buku
-                  {
-                    view: "datatable",
-                    id: "catalog_table",
-                    select: "row",
-                    rowHeight: 48,
-                    columns: [
-                      {
-                        id: "isbn",
-                        header: "ISBN (Barcode)",
-                        width: 145,
-                        template: obj => '<span class="isbn-text">' + obj.isbn + '</span>'
-                      },
-                      {
-                        id: "judul",
-                        header: "Judul Buku & Penulis",
-                        fillspace: true,
-                        template: obj =>
-                          '<div style="line-height:1.2; padding:4px 0;">' +
-                          '<div style="font-weight:700; color:#0f172a;">' + obj.judul + '</div>' +
-                          '<div style="font-size:11px; color:#64748b;">oleh ' + obj.penulis + (obj.penerbit ? ' • ' + obj.penerbit : '') + '</div>' +
-                          '</div>'
-                      },
-                      {
-                        id: "kategori_nama",
-                        header: "Kategori",
-                        width: 120,
-                        template: obj => '<span class="category-tag">' + (obj.kategori_nama || "-") + '</span>'
-                      },
-                      {
-                        id: "harga_jual",
-                        header: "Harga",
-                        width: 110,
-                        template: obj => '<span class="price-text">' + formatRupiah(obj.harga_jual) + '</span>'
-                      },
-                      {
-                        id: "stok",
-                        header: "Stok",
-                        width: 110,
-                        template: obj => {
-                          if (obj.stok <= 0) return '<span class="stock-badge stock-out">Habis</span>';
-                          if (obj.stok <= 5) return '<span class="stock-badge stock-low">Sisa ' + obj.stok + '</span>';
-                          return '<span class="stock-badge stock-in">' + obj.stok + ' Eks</span>';
-                        }
-                      },
-                      {
-                        id: "action",
-                        header: "Aksi",
-                        width: 90,
-                        template: obj => {
-                          if (obj.stok <= 0) {
-                            return '<button disabled style="opacity:0.4; font-size:11px; padding:3px 8px; border-radius:4px;">Habis</button>';
-                          }
-                          return '<button class="action-btn add-cart">+ Beli</button>';
-                        }
-                      }
-                    ],
-                    onClick: {
-                      "add-cart": function (e, id) {
-                        const row = this.getItem(id);
-                        addToCart(row);
-                        return false;
-                      }
-                    },
-                    on: {
-                      onItemDblClick: function (id) {
-                        const row = this.getItem(id);
-                        addToCart(row);
-                      }
-                    }
-                  }
-                ]
-              },
-
-              // Kolom Kanan: Keranjang Belanja & Pembayaran
-              {
-                gravity: 1,
-                css: "summary-card",
-                rows: [
-                  // Header Keranjang
-                  {
-                    view: "toolbar",
-                    height: 44,
-                    cols: [
-                      {
-                        id: "cart_header_label",
-                        view: "label",
-                        label: "🛒 Keranjang (0 item)",
-                        css: "cart-header-title"
-                      },
-                      {},
-                      {
-                        view: "button",
-                        value: "Kosongkan",
-                        width: 95,
-                        css: "webix_danger",
-                        click: clearCart
-                      }
-                    ]
-                  },
-
-                  // Tabel Item Keranjang
-                  {
-                    view: "datatable",
-                    id: "cart_table",
-                    height: 240,
-                    rowHeight: 40,
-                    columns: [
-                      { id: "judul", header: "Judul Buku", fillspace: true, template: obj => '<b>' + obj.judul + '</b>' },
-                      { id: "harga_jual", header: "Harga", width: 90, template: obj => formatRupiah(obj.harga_jual) },
-                      {
-                        id: "qty",
-                        header: "Qty",
-                        width: 95,
-                        template: obj =>
-                          '<div style="display:flex; align-items:center; gap:4px;">' +
-                          '<button class="action-btn qty-minus" style="padding:1px 6px;">-</button>' +
-                          '<span style="font-weight:700; width:20px; text-align:center;">' + obj.qty + '</span>' +
-                          '<button class="action-btn qty-plus" style="padding:1px 6px;">+</button>' +
-                          '</div>'
-                      },
-                      { id: "subtotal", header: "Subtotal", width: 105, template: obj => '<b style="color:#0f172a;">' + formatRupiah(obj.subtotal) + '</b>' },
-                      {
-                        id: "delete",
-                        header: "",
-                        width: 36,
-                        template: () => '<span class="action-btn del" title="Hapus">✕</span>'
-                      }
-                    ],
-                    onClick: {
-                      "qty-minus": function (e, id) {
-                        updateCartQty(id.row, -1);
-                        return false;
-                      },
-                      "qty-plus": function (e, id) {
-                        updateCartQty(id.row, 1);
-                        return false;
-                      },
-                      "del": function (e, id) {
-                        removeCartItem(id.row);
-                        return false;
-                      }
-                    }
-                  },
-
-                  // Banner Total Tagihan
-                  {
-                    id: "total_display",
-                    view: "template",
-                    height: 100,
-                    borderless: true,
-                    template:
-                      '<div class="total-due-box">' +
-                      '<div class="total-due-label">Total Tagihan</div>' +
-                      '<div class="total-due-amount">Rp 0</div>' +
-                      '<div style="font-size:11px; margin-top:4px; opacity:0.85;">Keranjang masih kosong</div>' +
-                      '</div>'
-                  },
-
-                  // Formulir Pembayaran
-                  {
-                    view: "form",
-                    id: "payment_form",
-                    padding: 10,
-                    elements: [
-                      {
-                        view: "segmented",
-                        id: "payment_method",
-                        value: "tunai",
-                        options: [
-                          { id: "tunai", value: "💵 Tunai" },
-                          { id: "kartu", value: "💳 Kartu Debit/Kredit" },
-                          { id: "qris", value: "📱 QRIS" }
-                        ],
-                        on: {
-                          onChange: () => updateChangeDue()
-                        }
-                      },
-                      {
-                        cols: [
-                          {
-                            view: "text",
-                            id: "cash_input",
-                            label: "Uang Diterima (Rp):",
-                            labelWidth: 140,
-                            placeholder: "0",
-                            keyPressTimeout: 100,
-                            on: {
-                              onTimedKeyPress: () => updateChangeDue(),
-                              onEnter: () => processCheckout()
-                            }
-                          },
-                          { width: 10 },
-                          {
-                            id: "change_due_label",
-                            view: "template",
-                            borderless: true,
-                            width: 150,
-                            template: '<div style="font-size:11px; color:#64748b;">Kembalian:<br><b style="font-size:14px; color:#0f172a;">Rp 0</b></div>'
-                          }
-                        ]
-                      },
-                      // Shortcut Nominal Cepat Rupiah
-                      {
-                        cols: [
-                          { view: "button", value: "Uang Pas", css: "quick-cash-btn", click: () => setQuickCash("pas") },
-                          { view: "button", value: "50 Ribu", css: "quick-cash-btn", click: () => setQuickCash(50000) },
-                          { view: "button", value: "100 Ribu", css: "quick-cash-btn", click: () => setQuickCash(100000) },
-                          { view: "button", value: "200 Ribu", css: "quick-cash-btn", click: () => setQuickCash(200000) },
-                          { view: "button", value: "500 Ribu", css: "quick-cash-btn", click: () => setQuickCash(500000) }
-                        ]
-                      },
-                      { height: 8 },
-                      {
-                        id: "btn_checkout",
-                        view: "button",
-                        value: "💳 BAYAR & CETAK STRUK (F9)",
-                        height: 48,
-                        css: "pay-btn",
-                        click: processCheckout
-                      }
-                    ]
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      });
-
-      // Shortcut F9 untuk bayar
-      window.addEventListener("keydown", function (e) {
-        if (e.key === "F9") {
-          e.preventDefault();
-          processCheckout();
-        }
-      });
-
-      // Init Data
-      startLiveClock();
-      checkHealth();
-      loadConfig();
-      loadCategories();
-      loadCatalog();
-      renderCart();
+      ]
     });
-  </script>
-</body>
 
+    // Keyboard shortcuts (keep working but hidden from UI)
+    window.addEventListener("keydown", e => {
+      if (e.key === "F2") { e.preventDefault(); if ($$("search_input")) $$("search_input").focus(); }
+      if (e.key === "F9") { e.preventDefault(); processCheckout(); }
+    });
+
+    startLiveClock(); checkHealth(); loadConfig(); loadCategories(); loadCatalog(); renderCart();
+
+    // Auto open sales history if requested via query param (?history=1)
+    if (new URLSearchParams(window.location.search).get("history") === "1") {
+      setTimeout(() => showSalesHistory(), 300);
+    }
+  });
+</script>
+</body>
 </html>

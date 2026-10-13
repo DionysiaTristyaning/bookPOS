@@ -1,186 +1,290 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Laporan Transaksi - BookPOS</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2937; }
-  header { background: #1e293b; color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
-  header a { color: #cbd5e1; text-decoration: none; font-size: 14px; }
-  main { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
-  .filter { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 16px; }
-  .filter label { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
-  input, button { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
-  button { background: #2563eb; color: #fff; border: 0; cursor: pointer; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .card { background: #fff; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .card small { color: #64748b; }
-  .card strong { display: block; font-size: 20px; margin-top: 4px; }
-  section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-x: auto; }
-  h2 { font-size: 16px; margin: 0 0 10px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e5e7eb; }
-  td.r, th.r { text-align: right; }
-  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
-  .bar-row .tgl { width: 90px; color: #64748b; }
-  .bar { height: 14px; background: #2563eb; border-radius: 3px; min-width: 1px; }
-  #pesan { color: #b91c1c; margin-bottom: 12px; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laporan Penjualan - BookPOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Page-specific overrides */
+    .lp-shell { display: flex; height: 100vh; overflow: hidden; }
+    .lp-main  { flex: 1; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-app); }
+    .lp-topbar {
+      height: 48px; min-height: 48px; background: #fff; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 16px;
+      font-size: 14px; font-weight: 700; color: #111; flex-shrink: 0;
+    }
+    .lp-body { flex: 1; padding: 20px 24px; overflow-y: auto; }
+  </style>
 </head>
 <body>
-<header>
-  <strong>Laporan Transaksi</strong>
-  <a href="/">Kembali ke Kasir</a>
-</header>
-<main>
-  <div class="filter">
-    <label>Dari <input type="date" id="dari"></label>
-    <label>Sampai <input type="date" id="sampai"></label>
-    <button id="btnTampil">Tampilkan</button>
-  </div>
-  <div id="pesan"></div>
+<script src="/auth.js"></script>
+<script>
+  if (!localStorage.getItem("token")) location.replace("/login.html");
+  let _user = null;
+  try { _user = JSON.parse(localStorage.getItem("user")); } catch(e) {}
+  if (!_user || _user.role !== "admin") location.replace("/");
+</script>
 
-  <div class="cards">
-    <div class="card"><small>Jumlah transaksi</small><strong id="kTx">-</strong></div>
-    <div class="card"><small>Buku terjual</small><strong id="kBuku">-</strong></div>
-    <div class="card"><small>Omzet (sebelum pajak)</small><strong id="kOmzet">-</strong></div>
-    <div class="card"><small>Pajak</small><strong id="kPajak">-</strong></div>
-    <div class="card"><small>Total penerimaan</small><strong id="kTotal">-</strong></div>
-  </div>
+<div class="lp-shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">📚</div>
+        <div>
+          <div class="sidebar-brand-name">BookPOS</div>
+          <div class="sidebar-brand-sub">Point of Sale</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-label-section">Menu</div>
+        <a href="/" class="sidebar-link">
+          <span class="nav-icon">🛒</span>
+          <span class="nav-text">Kasir / POS</span>
+        </a>
+        <a href="/master.html" class="sidebar-link">
+          <span class="nav-icon">📦</span>
+          <span class="nav-text">Master Data</span>
+        </a>
+        <a href="/laporan.html" class="sidebar-link active">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">Laporan</span>
+        </a>
+        <a href="/?history=1" class="sidebar-link">
+          <span class="nav-icon">📜</span>
+          <span class="nav-text">Riwayat Nota</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="user-avatar" id="uAvatar">A</div>
+          <div class="user-info">
+            <div class="user-name" id="uName">Administrator</div>
+            <div class="user-role">ADMIN</div>
+          </div>
+          <button class="btn-logout" onclick="logout()">Keluar</button>
+        </div>
+        <div class="sidebar-meta">
+          <div class="sidebar-clock" id="live_clock">🕒 --:--</div>
+          <div id="db_status_pill"><span class="status-pill status-offline">Memeriksa...</span></div>
+      </div>
+    </div>
+  </aside>
 
-  <section>
-    <h2>Penjualan per hari</h2>
-    <div id="perHari"></div>
-  </section>
+  <!-- MAIN CONTENT -->
+  <div class="lp-main">
+    <div class="pos-topbar" style="height:48px; min-height:48px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; padding:0 16px; gap:12px; flex-shrink:0;">
+      <div style="font-size:14px; font-weight:700; color:#111; display:flex; align-items:center; gap:8px;">
+        <span>📊</span><span>Laporan &amp; Analitik Penjualan</span>
+      </div>
+      <div style="flex:1;"></div>
+      <button class="topbar-btn" onclick="muat()" style="padding:6px 12px; border-radius:6px; border:1px solid #e2e8f0; background:#fff; color:#374151; font-size:12px; font-weight:600; cursor:pointer;">🔄 Segarkan</button>
+    </div>
 
-  <section>
-    <h2>Per metode pembayaran</h2>
-    <table>
-      <thead><tr><th>Metode</th><th class="r">Transaksi</th><th class="r">Total</th></tr></thead>
-      <tbody id="perMetode"></tbody>
-    </table>
-  </section>
+    <!-- Filter Bar Toolbar -->
+    <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:8px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#475569;">
+        <span>Dari:</span>
+        <input type="date" id="dari" style="height:32px; padding:0 8px; border:1px solid #cbd5e1; border-radius:5px; font-size:12px; font-family:var(--font-main); color:#0f172a;">
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#475569;">
+        <span>Sampai:</span>
+        <input type="date" id="sampai" style="height:32px; padding:0 8px; border:1px solid #cbd5e1; border-radius:5px; font-size:12px; font-family:var(--font-main); color:#0f172a;">
+      </div>
+      <button id="btnTampil" style="height:32px; padding:0 14px; background:var(--primary); color:#fff; border:none; border-radius:5px; font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font-main);">🔍 Tampilkan</button>
+    </div>
 
-  <section>
-    <h2>5 buku terlaris</h2>
-    <table>
-      <thead><tr><th>Judul</th><th>ISBN</th><th class="r">Terjual</th><th class="r">Pendapatan</th></tr></thead>
-      <tbody id="terlaris"></tbody>
-    </table>
-  </section>
+    <div class="lp-body" style="padding: 16px 20px; overflow-y: auto;">
+      <div id="lp-pesan"></div>
 
-  <section>
-    <h2>10 transaksi terbaru</h2>
-    <table>
-      <thead><tr><th>No. Faktur</th><th>Waktu</th><th>Metode</th><th>Kasir</th><th class="r">Total</th></tr></thead>
-      <tbody id="terbaru"></tbody>
-    </table>
-  </section>
-</main>
+      <!-- KPI Cards (identik dengan master.html) -->
+      <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;">
+        <div class="kpi-card">
+          <div class="kpi-title">Transaksi</div>
+          <div class="kpi-value" id="kTx">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Buku Terjual</div>
+          <div class="kpi-value" id="kBuku">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Omzet Bersih</div>
+          <div class="kpi-value" id="kOmzet" style="font-size:18px;">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Pajak</div>
+          <div class="kpi-value" id="kPajak" style="font-size:18px;">-</div>
+        </div>
+        <div class="kpi-card" style="border-color:#86efac; background:#f0fdf4;">
+          <div class="kpi-title" style="color:#15803d;">Total Penerimaan</div>
+          <div class="kpi-value" id="kTotal" style="color:#16a34a; font-size:18px;">-</div>
+        </div>
+      </div>
+
+      <!-- Chart: Per Hari -->
+      <div class="lp-section">
+        <h2>📈 Penjualan per Hari</h2>
+        <div id="perHari"></div>
+      </div>
+
+      <!-- Per Metode -->
+      <div class="lp-section">
+        <h2>💳 Per Metode Pembayaran</h2>
+        <table class="lp-table">
+          <thead><tr><th>Metode</th><th class="r">Transaksi</th><th class="r">Total</th></tr></thead>
+          <tbody id="perMetode"></tbody>
+        </table>
+      </div>
+
+      <!-- Terlaris -->
+      <div class="lp-section">
+        <h2>🏆 5 Buku Terlaris</h2>
+        <table class="lp-table">
+          <thead><tr><th>Judul Buku</th><th>ISBN</th><th class="r">Terjual</th><th class="r">Pendapatan</th></tr></thead>
+          <tbody id="terlaris"></tbody>
+        </table>
+      </div>
+
+      <!-- Transaksi Terbaru -->
+      <div class="lp-section">
+        <h2>🕒 10 Transaksi Terakhir</h2>
+        <table class="lp-table">
+          <thead><tr><th>No. Faktur</th><th>Waktu</th><th>Metode</th><th>Kasir</th><th class="r">Total</th></tr></thead>
+          <tbody id="terbaru"></tbody>
+        </table>
+      </div>
+
+    </div><!-- /lp-body -->
+  </div><!-- /lp-main -->
+</div><!-- /lp-shell -->
 
 <script src="pos-helper.js"></script>
 <script>
-  (function () {
-    let user = null;
-    try { user = JSON.parse(localStorage.getItem("user")); } catch (e) {}
-    if (!POS.getToken() || !user) {
-      location.replace("/login.html");
-    } else if (user.role !== "admin") {
-      location.replace("/");
+(function() {
+  const u = JSON.parse(localStorage.getItem("user")||"null");
+  if (u) {
+    const nm = document.getElementById("uName"), av = document.getElementById("uAvatar");
+    if (nm) nm.textContent = u.nama || "Administrator";
+    if (av) av.textContent = (u.nama||"A").charAt(0).toUpperCase();
+  }
+})();
+
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  location.replace("/login.html");
+}
+
+function startLiveClock() {
+  const tick = () => {
+    const el = document.getElementById("live_clock");
+    if (el) {
+      const now = new Date();
+      const tgl = now.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
+      const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      el.textContent = "🕒 " + tgl + " " + jam;
     }
-  })();
+  };
+  tick(); setInterval(tick, 1000);
+}
+startLiveClock();
 
-  const $ = (id) => document.getElementById(id);
-  const rp = POS.rupiah;
-
-  function isoLokal(d) {
-    const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-    return z.toISOString().slice(0, 10);
+async function checkHealth() {
+  try {
+    const r = await fetch("/api/health"), h = await r.json();
+    const el = document.getElementById("db_status_pill");
+    if (el) el.innerHTML = h.database_connected
+      ? '<span class="status-pill status-online">🟢 Atlas Online</span>'
+      : '<span class="status-pill status-offline">⚠️ DB Terputus</span>';
+  } catch(e) {
+    const el = document.getElementById("db_status_pill");
+    if (el) el.innerHTML = '<span class="status-pill status-offline">⚠️ Offline</span>';
   }
+}
+checkHealth();
 
-  function siapkanTabel(tbody) {
-    tbody.innerHTML = "";
-    return (cells) => {
-      const tr = document.createElement("tr");
-      cells.forEach(([teks, kanan]) => {
-        const td = document.createElement("td");
-        td.textContent = teks;
-        if (kanan) td.className = "r";
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    };
-  }
+const $ = id => document.getElementById(id);
+const rp = n => "Rp\u00a0" + (parseInt(n)||0).toLocaleString("id-ID");
 
-  async function muat() {
-    $("pesan").textContent = "";
-    const url = "/api/reports/summary?dari=" + $("dari").value + "&sampai=" + $("sampai").value;
-    let data;
-    try {
-      const res = await fetch(url, { headers: POS.authHeaders() });
-      data = await res.json();
-      if (res.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        location.replace("/login.html");
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || "Gagal memuat laporan");
-    } catch (e) {
-      $("pesan").textContent = e.message;
-      return;
-    }
+function isoLokal(d) {
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
 
-    const r = data.ringkasan;
-    $("kTx").textContent = r.jumlah_transaksi;
-    $("kBuku").textContent = r.buku_terjual;
-    $("kOmzet").textContent = rp(r.omzet);
-    $("kPajak").textContent = rp(r.pajak);
-    $("kTotal").textContent = rp(r.total);
+function addRows(tbody, cells) {
+  const tr = document.createElement("tr");
+  cells.forEach(([v, right, isHtml]) => {
+    const td = document.createElement("td");
+    if (isHtml) td.innerHTML = v;
+    else td.textContent = v;
+    if (right) td.className = "r";
+    tr.appendChild(td);
+  });
+  tbody.appendChild(tr);
+}
 
-    const maks = Math.max(1, ...data.per_hari.map((h) => h.total));
-    $("perHari").innerHTML = "";
-    data.per_hari.forEach((h) => {
-      const row = document.createElement("div");
-      row.className = "bar-row";
-      const tgl = document.createElement("span");
-      tgl.className = "tgl";
-      tgl.textContent = h.tanggal;
-      const bar = document.createElement("div");
-      bar.className = "bar";
-      bar.style.width = (h.total / maks) * 60 + "%";
-      const ket = document.createElement("span");
-      ket.textContent = rp(h.total) + " (" + h.jumlah + " transaksi)";
-      row.append(tgl, bar, ket);
-      $("perHari").appendChild(row);
-    });
+async function muat() {
+  $("lp-pesan").textContent = "";
+  const url = "/api/reports/summary?dari=" + $("dari").value + "&sampai=" + $("sampai").value;
+  let data;
+  try {
+    const res = await fetch(url, { headers: POS.authHeaders() });
+    data = await res.json();
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) throw new Error(data.error || "Gagal");
+  } catch(e) { $("lp-pesan").textContent = e.message; return; }
 
-    let tambah = siapkanTabel($("perMetode"));
-    data.per_metode.forEach((m) => tambah([[m.metode], [m.jumlah, 1], [rp(m.total), 1]]));
+  const r = data.ringkasan;
+  $("kTx").textContent    = r.jumlah_transaksi;
+  $("kBuku").textContent  = r.buku_terjual;
+  $("kOmzet").textContent = rp(r.omzet);
+  $("kPajak").textContent = rp(r.pajak);
+  $("kTotal").textContent = rp(r.total);
 
-    tambah = siapkanTabel($("terlaris"));
-    data.terlaris.forEach((b) => tambah([[b.judul], [b.isbn], [b.qty, 1], [rp(b.pendapatan), 1]]));
+  const maks = Math.max(1, ...data.per_hari.map(h => h.total));
+  $("perHari").innerHTML = "";
+  data.per_hari.forEach(h => {
+    const row = document.createElement("div"); row.className = "bar-row";
+    const tgl = document.createElement("span"); tgl.className = "tgl"; tgl.textContent = h.tanggal;
+    const bar = document.createElement("div"); bar.className = "bar"; bar.style.width = Math.max(4, (h.total/maks*60))+"%";
+    const val = document.createElement("span"); val.className = "bar-val"; val.textContent = rp(h.total) + " (" + h.jumlah + " transaksi)";
+    row.append(tgl, bar, val); $("perHari").appendChild(row);
+  });
 
-    tambah = siapkanTabel($("terbaru"));
-    data.terbaru.forEach((t) =>
-      tambah([
-        [t.no_faktur],
-        [String(t.created_at).replace("T", " ").slice(0, 16)],
-        [t.metode_pembayaran],
-        [t.kasir_nama],
-        [rp(t.total), 1],
-      ])
-    );
-  }
+  const pm = $("perMetode"); pm.innerHTML = "";
+  data.per_metode.forEach(m => addRows(pm, [
+    ['<span class="category-tag">'+m.metode.toUpperCase()+'</span>', false, true],
+    [m.jumlah + " transaksi", true, false],
+    ['<span class="price-text">'+rp(m.total)+'</span>', true, true]
+  ]));
 
-  const hariIni = new Date();
-  const tujuhHari = new Date(hariIni.getTime() - 6 * 86400000);
-  $("dari").value = isoLokal(tujuhHari);
-  $("sampai").value = isoLokal(hariIni);
-  $("btnTampil").addEventListener("click", muat);
-  muat();
+  const tl = $("terlaris"); tl.innerHTML = "";
+  data.terlaris.forEach(b => addRows(tl, [
+    ['<span style="font-weight:600;color:#0f172a;">'+b.judul+'</span>', false, true],
+    ['<span class="isbn-text">'+b.isbn+'</span>', false, true],
+    ['<span style="font-weight:700;">'+b.qty+' eks</span>', true, true],
+    ['<span class="price-text">'+rp(b.pendapatan)+'</span>', true, true]
+  ]));
+
+  const tb = $("terbaru"); tb.innerHTML = "";
+  data.terbaru.forEach(t => addRows(tb, [
+    ['<span style="font-weight:600;color:#0f172a;">'+t.no_faktur+'</span>', false, true],
+    [String(t.created_at).replace("T"," ").slice(0,16), false, false],
+    ['<span class="category-tag">'+t.metode_pembayaran.toUpperCase()+'</span>', false, true],
+    [t.kasir_nama||"Kasir", false, false],
+    ['<span class="price-text">'+rp(t.total)+'</span>', true, true]
+  ]));
+}
+
+const hariIni   = new Date();
+const tujuhHari = new Date(hariIni.getTime() - 6*86400000);
+$("dari").value    = isoLokal(tujuhHari);
+$("sampai").value  = isoLokal(hariIni);
+$("btnTampil").addEventListener("click", muat);
+muat();
 </script>
 </body>
 </html>
-```
