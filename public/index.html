@@ -193,12 +193,102 @@
     updateChangeDue();
   }
 
+  async function executeCheckout(method, cashReceived) {
+    try {
+      webix.extend($$("main_layout"), webix.ProgressBar);
+      $$("main_layout").showProgress({ type:"icon" });
+      const res = await apiCall("/checkout", "POST", {
+        items: currentCart.map(i => ({ id:i.id, isbn:i.isbn, judul:i.judul, qty:i.qty })),
+        metode_pembayaran: method, tunai_diterima: cashReceived, kasir_nama: currentUser.nama
+      });
+      $$("main_layout").hideProgress();
+      if ($$("qris_window")) $$("qris_window").close();
+      showReceiptModal(res.transaction);
+      clearCart(); await loadCatalog();
+    } catch(err) {
+      $$("main_layout").hideProgress();
+      webix.message({ type:"error", text:"Transaksi gagal: " + err.message });
+    }
+  }
+
+  function showQrisModal() {
+    if (!currentCart.length) {
+      webix.message({ type:"error", text:"Keranjang belanja masih kosong!" });
+      return;
+    }
+    const total = cartTotal();
+    if ($$("qris_window")) $$("qris_window").close();
+
+    webix.ui({
+      view: "window",
+      id: "qris_window",
+      modal: true,
+      position: "center",
+      width: 380,
+      head: {
+        view: "toolbar", height: 42, css: "qris-modal-header",
+        cols: [
+          { view: "label", label: '<span style="font-weight:700;font-size:13px;color:#0f172a;">📱 Barcode QRIS Pembeli</span>' },
+          { view: "icon", icon: "wxi-close", css: "modal-close-icon", click: () => $$("qris_window").close() }
+        ]
+      },
+      body: {
+        rows: [
+          {
+            view: "template",
+            borderless: true,
+            autoheight: true,
+            template: function() {
+              return `
+                <div class="qris-card">
+                  <div class="qris-brand">
+                    <div class="qris-badge">QRIS</div>
+                    <div class="qris-sub">Pembayaran Standar Nasional</div>
+                  </div>
+                  <div class="qris-store-name">📚 Toko Buku BookPOS</div>
+                  <div class="qris-amount-box">
+                    <div class="qris-amount-label">TOTAL TAGIHAN</div>
+                    <div class="qris-amount-val">${formatRupiah(total)}</div>
+                  </div>
+                  <div class="qris-image-wrapper">
+                    <img src="/qris-statis.png" alt="Barcode QRIS Statis" class="qris-barcode-img" />
+                  </div>
+                  <div class="qris-instructions">
+                    <div>Scan barcode di atas via <b>ShopeePay, GoPay, OVO, Dana, BCA, Livin</b>, dll.</div>
+                  </div>
+                </div>
+              `;
+            }
+          },
+          {
+            padding: { top: 4, bottom: 14, left: 18, right: 18 },
+            cols: [
+              { view: "button", value: "Tutup", css: "webix_secondary", width: 85, click: () => $$("qris_window").close() },
+              { width: 8 },
+              {
+                view: "button",
+                value: "✅ Selesai & Cetak Struk",
+                css: "pay-btn",
+                click: () => executeCheckout("qris", total)
+              }
+            ]
+          }
+        ]
+      }
+    }).show();
+  }
+
   async function processCheckout() {
     if (!currentCart.length) { webix.message({ type:"error", text:"Keranjang kosong!" }); return; }
     const total    = cartTotal();
     const method   = $$("payment_method") ? $$("payment_method").getValue() : "tunai";
     const { raw, val } = getCleanCash();
     let cashReceived = total;
+
+    if (method === "qris") {
+      showQrisModal();
+      return;
+    }
 
     if (method === "tunai") {
       if (!raw || val < total) {
@@ -215,20 +305,7 @@
       }
     }
 
-    try {
-      webix.extend($$("main_layout"), webix.ProgressBar);
-      $$("main_layout").showProgress({ type:"icon" });
-      const res = await apiCall("/checkout", "POST", {
-        items: currentCart.map(i => ({ id:i.id, isbn:i.isbn, judul:i.judul, qty:i.qty })),
-        metode_pembayaran: method, tunai_diterima: cashReceived, kasir_nama: currentUser.nama
-      });
-      $$("main_layout").hideProgress();
-      showReceiptModal(res.transaction);
-      clearCart(); await loadCatalog();
-    } catch(err) {
-      $$("main_layout").hideProgress();
-      webix.message({ type:"error", text:"Transaksi gagal: " + err.message });
-    }
+    await executeCheckout(method, cashReceived);
   }
 
   function showReceiptModal(tx) {
@@ -507,48 +584,78 @@
                             { id:"kartu", value:"💳 Kartu" },
                             { id:"qris",  value:"📱 QRIS" }
                           ],
-                          on:{ onChange(v) {
-                            if (v !== "tunai" && $$("cash_input")) {
-                              const t = cartTotal();
-                              if (t > 0) $$("cash_input").setValue(String(t));
-                            }
-                            updateChangeDue();
-                          }}
-                        },
-                        // Cash input — inline label, 34px height
-                        { view:"text", id:"cash_input",
-                          label:"Bayar (Rp):",
-                          labelWidth:85,
-                          height:34,
-                          placeholder:"0",
-                          keyPressTimeout:80,
                           on:{
-                            onTimedKeyPress:()=>updateChangeDue(),
-                            onEnter:()=>processCheckout()
+                            onChange(v) {
+                              if (v === "qris") {
+                                if ($$("cash_payment_section")) $$("cash_payment_section").hide();
+                                if ($$("qris_empty_space")) $$("qris_empty_space").show();
+                                if (cartTotal() > 0) showQrisModal();
+                              } else {
+                                if ($$("qris_empty_space")) $$("qris_empty_space").hide();
+                                if ($$("cash_payment_section")) $$("cash_payment_section").show();
+                                if (v === "kartu" && $$("cash_input")) {
+                                  const t = cartTotal();
+                                  if (t > 0) $$("cash_input").setValue(String(t));
+                                }
+                                updateChangeDue();
+                              }
+                            },
+                            onItemClick() {
+                              if (this.getValue() === "qris" && cartTotal() > 0) {
+                                showQrisModal();
+                              }
+                            }
                           }
                         },
-                        // Change label — compact 30px
-                        { id:"change_due_label", view:"template", borderless:true, height:30,
-                          template:'<div class="change-box"><span>Status Kembalian:</span><b>Rp 0</b></div>' },
-                        // Quick cash — 2 rows of 3, 26px height
+                        // Cash & Card payment section (hidden when QRIS is active)
                         {
-                          cols:[
-                            { view:"button", value:"Uang Pas", height:26, css:"quick-cash-btn", click:()=>setQuickCash("pas") },
-                            { view:"button", value:"50.000",   height:26, css:"quick-cash-btn", click:()=>setQuickCash(50000) },
-                            { view:"button", value:"100.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(100000) }
+                          id: "cash_payment_section",
+                          rows: [
+                            // Cash input — inline label, 34px height
+                            { view:"text", id:"cash_input",
+                              label:"Bayar (Rp):",
+                              labelWidth:85,
+                              height:34,
+                              placeholder:"0",
+                              keyPressTimeout:80,
+                              on:{
+                                onTimedKeyPress:()=>updateChangeDue(),
+                                onEnter:()=>processCheckout()
+                              }
+                            },
+                            // Change label — compact 30px
+                            { id:"change_due_label", view:"template", borderless:true, height:30,
+                              template:'<div class="change-box"><span>Status Kembalian:</span><b>Rp 0</b></div>' },
+                            // Quick cash — 2 rows of 3, 26px height
+                            {
+                              cols:[
+                                { view:"button", value:"Uang Pas", height:26, css:"quick-cash-btn", click:()=>setQuickCash("pas") },
+                                { view:"button", value:"50.000",   height:26, css:"quick-cash-btn", click:()=>setQuickCash(50000) },
+                                { view:"button", value:"100.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(100000) }
+                              ]
+                            },
+                            {
+                              cols:[
+                                { view:"button", value:"200.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(200000) },
+                                { view:"button", value:"500.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(500000) },
+                                { view:"button", value:"1.000.000", height:26, css:"quick-cash-btn", click:()=>setQuickCash(1000000) }
+                              ]
+                            },
+                            { height:4 },
+                            { id:"btn_checkout", view:"button",
+                              value:"💳 BAYAR & CETAK STRUK",
+                              height:42, css:"pay-btn", click:processCheckout }
                           ]
                         },
+                        // Clean white space when QRIS is selected (popup handles payment)
                         {
-                          cols:[
-                            { view:"button", value:"200.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(200000) },
-                            { view:"button", value:"500.000",  height:26, css:"quick-cash-btn", click:()=>setQuickCash(500000) },
-                            { view:"button", value:"1.000.000", height:26, css:"quick-cash-btn", click:()=>setQuickCash(1000000) }
-                          ]
-                        },
-                        { height:4 },
-                        { id:"btn_checkout", view:"button",
-                          value:"💳 BAYAR & CETAK STRUK",
-                          height:42, css:"pay-btn", click:processCheckout }
+                          id: "qris_empty_space",
+                          hidden: true,
+                          view: "template",
+                          borderless: true,
+                          height: 172,
+                          template: '<div style="height:100%;width:100%;background:#ffffff;cursor:pointer;" onclick="showQrisModal()" title="Klik untuk membuka kembali Barcode QRIS"></div>'
+                        }
                       ]
                     }
                   ]

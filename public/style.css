@@ -958,3 +958,97 @@ div[view_id="change_due_label"] {
 .bar-val { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #475569; }
 
 #lp-pesan { color: var(--danger); font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+
+/* ============================================================
+   QRIS POPUP MODAL
+   ============================================================ */
+.qris-modal-header {
+  background: #f8fafc !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.qris-card {
+  background: #ffffff;
+  padding: 16px 20px 8px;
+  text-align: center;
+  font-family: var(--font-main);
+}
+
+.qris-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.qris-badge {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #dc2626;
+  line-height: 1.1;
+}
+
+.qris-sub {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.qris-store-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 6px 0;
+}
+
+.qris-amount-box {
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 6px 0 10px;
+}
+
+.qris-amount-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.qris-amount-val {
+  font-size: 20px;
+  font-weight: 800;
+  color: #2563eb;
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.qris-image-wrapper {
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px;
+  display: inline-block;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+  margin-bottom: 8px;
+}
+
+.qris-barcode-img {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+
+.qris-instructions {
+  font-size: 11px;
+  color: #475569;
+  line-height: 1.4;
+  padding: 0 6px;
+}
