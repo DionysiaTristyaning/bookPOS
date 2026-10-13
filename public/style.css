@@ -204,6 +204,9 @@ html, body {
   flex-shrink: 0;
   border-top: 1px solid var(--sidebar-border);
   padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .sidebar-user {
@@ -213,12 +216,11 @@ html, body {
   padding: 8px;
   border-radius: 6px;
   background: #1f2937;
-  margin-bottom: 8px;
 }
 
 .user-avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--primary);
   color: #fff;
@@ -226,7 +228,7 @@ html, body {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
@@ -244,7 +246,7 @@ html, body {
 .user-role {
   font-size: 10px;
   color: #60a5fa;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -269,35 +271,42 @@ html, body {
 .sidebar-meta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
 }
 
 .sidebar-clock {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: #6b7280;
+  font-weight: 500;
+  color: #9ca3af;
+  white-space: nowrap;
 }
 
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 10px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 9999px;
+  width: fit-content;
 }
 
 .status-online {
-  background: rgba(22,163,74,0.15);
+  background: rgba(22,163,74,0.2);
   color: #4ade80;
-  border: 1px solid rgba(22,163,74,0.25);
+  border: 1px solid rgba(74,222,128,0.35);
 }
 
 .status-offline {
-  background: rgba(245,158,11,0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(245,158,11,0.25);
+  background: rgba(239,68,68,0.2);
+  color: #f87171;
+  border: 1px solid rgba(248,113,113,0.35);
 }
 
 /* ============================================================
@@ -565,63 +574,138 @@ html, body {
 }
 
 /* Webix-specific total display */
+div[view_id="total_display"] {
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 8px !important;
+  margin: 6px 10px !important;
+}
+
 .total-due-box {
-  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
   color: #fff;
   padding: 10px 14px;
   text-align: right;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid #1e40af;
+  border-radius: 8px;
 }
 
 .total-due-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: #93c5fd;
+  line-height: 1.2;
 }
 
 .total-due-amount {
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   color: #4ade80;
-  margin-top: 2px;
+  margin: 2px 0;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
 }
 
-/* Payment Section */
-.payment-section { flex-shrink: 0; }
+.total-due-detail {
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Change due box */
+div[view_id="change_due_label"] {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.change-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.change-box b {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.change-box.change-ok {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #065f46;
+}
+
+.change-box.change-ok b {
+  color: #15803d;
+}
+
+.change-box.change-short {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.change-box.change-short b {
+  color: #dc2626;
+}
 
 /* Quick cash buttons */
 .quick-cash-btn button {
   font-family: var(--font-mono) !important;
-  font-weight: 600 !important;
-  font-size: 11px !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
   background: #f8fafc !important;
-  color: var(--text-mid) !important;
+  color: #1e293b !important;
   border: 1px solid #cbd5e1 !important;
-  border-radius: 5px !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
 }
 
 .quick-cash-btn button:hover {
   background: #e2e8f0 !important;
-  color: var(--text-dark) !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
 }
 
 /* Pay button */
 .pay-btn button {
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
   color: #fff !important;
-  font-weight: 700 !important;
+  font-weight: 800 !important;
   font-size: 14px !important;
   border-radius: 8px !important;
-  letter-spacing: 0.3px !important;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.3) !important;
+  letter-spacing: 0.5px !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(22,163,74,0.3) !important;
   transition: all 0.15s ease !important;
 }
 
 .pay-btn button:hover {
-  background: #15803d !important;
-  box-shadow: 0 4px 12px rgba(22,163,74,0.4) !important;
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%) !important;
+  box-shadow: 0 6px 16px rgba(22,163,74,0.4) !important;
+  transform: translateY(-1px);
 }
 
 /* Secondary toolbar buttons */

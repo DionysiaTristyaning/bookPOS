@@ -6,11 +6,18 @@ from pymongo import MongoClient, ASCENDING
 from bson import ObjectId
 import certifi
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root .env
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+load_dotenv(_env_path)
 
-MONGO_URI = os.getenv("MONGO_URI", "").strip()
-DB_NAME = os.getenv("DB_NAME", "bookpos")
+def get_mongo_uri():
+    return os.getenv("MONGO_URI", "").strip()
+
+def get_db_name():
+    return os.getenv("DB_NAME", "bookpos")
+
+MONGO_URI = get_mongo_uri()
+DB_NAME = get_db_name()
 
 _client = None
 _db = None
@@ -31,7 +38,9 @@ def slugify(text):
     return text.strip("-")
 
 def init_db():
-    global _client, _db, _is_connected, _connection_error
+    global _client, _db, _is_connected, _connection_error, MONGO_URI, DB_NAME
+    MONGO_URI = get_mongo_uri()
+    DB_NAME = get_db_name()
     
     if not MONGO_URI or "<username>" in MONGO_URI:
         _is_connected = False

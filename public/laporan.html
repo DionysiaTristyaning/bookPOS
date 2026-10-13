@@ -4,15 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Laporan Penjualan - BookPOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <style>
     /* Page-specific overrides */
     .lp-shell { display: flex; height: 100vh; overflow: hidden; }
-    .lp-main  { flex: 1; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; }
+    .lp-main  { flex: 1; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-app); }
     .lp-topbar {
-      height: 48px; min-height: 48px; background: #fff; border-bottom: 1px solid #e2e8f0;
-      display: flex; align-items: center; padding: 0 20px;
-      font-size: 14px; font-weight: 700; color: #111827; flex-shrink: 0;
+      height: 48px; min-height: 48px; background: #fff; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 16px;
+      font-size: 14px; font-weight: 700; color: #111; flex-shrink: 0;
     }
     .lp-body { flex: 1; padding: 20px 24px; overflow-y: auto; }
   </style>
@@ -34,7 +37,7 @@
         <div class="sidebar-brand-icon">📚</div>
         <div>
           <div class="sidebar-brand-name">BookPOS</div>
-          <div class="sidebar-brand-sub">Laporan & Analitik</div>
+          <div class="sidebar-brand-sub">Point of Sale</div>
         </div>
       </div>
       <nav class="sidebar-nav">
@@ -51,6 +54,10 @@
           <span class="nav-icon">📊</span>
           <span class="nav-text">Laporan</span>
         </a>
+        <a href="/?history=1" class="sidebar-link">
+          <span class="nav-icon">📜</span>
+          <span class="nav-text">Riwayat Nota</span>
+        </a>
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-user">
@@ -62,7 +69,7 @@
           <button class="btn-logout" onclick="logout()">Keluar</button>
         </div>
         <div class="sidebar-meta">
-          <div class="sidebar-clock" id="live_clock">00:00:00</div>
+          <div class="sidebar-clock" id="live_clock">🕒 --:--</div>
           <div id="db_status_pill"><span class="status-pill status-offline">Memeriksa...</span></div>
         </div>
       </div>
@@ -148,7 +155,12 @@ function logout() {
 function startLiveClock() {
   const tick = () => {
     const el = document.getElementById("live_clock");
-    if (el) el.textContent = new Date().toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    if (el) {
+      const now = new Date();
+      const tgl = now.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
+      const jam = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      el.textContent = "🕒 " + tgl + " " + jam;
+    }
   };
   tick(); setInterval(tick, 1000);
 }
@@ -159,9 +171,12 @@ async function checkHealth() {
     const r = await fetch("/api/health"), h = await r.json();
     const el = document.getElementById("db_status_pill");
     if (el) el.innerHTML = h.database_connected
-      ? '<span class="status-pill status-online">● Online</span>'
-      : '<span class="status-pill status-offline">⚠ Offline</span>';
-  } catch(e) {}
+      ? '<span class="status-pill status-online">🟢 Atlas Online</span>'
+      : '<span class="status-pill status-offline">⚠️ DB Terputus</span>';
+  } catch(e) {
+    const el = document.getElementById("db_status_pill");
+    if (el) el.innerHTML = '<span class="status-pill status-offline">⚠️ Offline</span>';
+  }
 }
 checkHealth();
 
