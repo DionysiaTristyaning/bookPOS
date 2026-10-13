@@ -10,11 +10,18 @@ import certifi
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(_env_path)
 
+DEFAULT_MONGO_URI = "mongodb+srv://bookpos_app:xO043PYSwJigFkD0@bookpos-cluster.4xouvek.mongodb.net/bookpos?retryWrites=true&w=majority"
+DEFAULT_DB_NAME = "bookpos"
+
 def get_mongo_uri():
-    return os.getenv("MONGO_URI", "").strip()
+    uri = os.getenv("MONGO_URI", "").strip()
+    if not uri or "<username>" in uri:
+        return DEFAULT_MONGO_URI
+    return uri
 
 def get_db_name():
-    return os.getenv("DB_NAME", "bookpos")
+    name = os.getenv("DB_NAME", "").strip()
+    return name if name else DEFAULT_DB_NAME
 
 MONGO_URI = get_mongo_uri()
 DB_NAME = get_db_name()
@@ -50,7 +57,7 @@ def init_db():
     try:
         _client = MongoClient(
             MONGO_URI,
-            serverSelectionTimeoutMS=5000,
+            serverSelectionTimeoutMS=8000,
             tlsCAFile=certifi.where()
         )
         # Test connection ping
@@ -58,22 +65,25 @@ def init_db():
         _db = _client[DB_NAME]
         
         # Ensure Indexes sesuai SkemaUserDanBuku.md
-        # 1. Koleksi books
-        _db.books.create_index([("isbn", ASCENDING)], unique=True)
-        _db.books.create_index([("judul", ASCENDING)])
-        _db.books.create_index([("kategori_id", ASCENDING)])
-        _db.books.create_index([("aktif", ASCENDING)])
-        
-        # 2. Koleksi categories
-        _db.categories.create_index([("slug", ASCENDING)], unique=True)
-        
-        # 3. Koleksi users
-        _db.users.create_index([("username", ASCENDING)], unique=True)
-        
-        # 4. Koleksi transactions
-        _db.transactions.create_index([("no_faktur", ASCENDING)], unique=True)
-        _db.transactions.create_index([("created_at", ASCENDING)])
-        
+        try:
+            # 1. Koleksi books
+            _db.books.create_index([("isbn", ASCENDING)], unique=True)
+            _db.books.create_index([("judul", ASCENDING)])
+            _db.books.create_index([("kategori_id", ASCENDING)])
+            _db.books.create_index([("aktif", ASCENDING)])
+            
+            # 2. Koleksi categories
+            _db.categories.create_index([("slug", ASCENDING)], unique=True)
+            
+            # 3. Koleksi users
+            _db.users.create_index([("username", ASCENDING)], unique=True)
+            
+            # 4. Koleksi transactions
+            _db.transactions.create_index([("no_faktur", ASCENDING)], unique=True)
+            _db.transactions.create_index([("created_at", ASCENDING)])
+        except Exception as idx_err:
+            print(f"[Database] Info indeks: {idx_err}")
+            
         _is_connected = True
         _connection_error = None
         print(f"[Database] Terhubung ke MongoDB Atlas: {DB_NAME}")
