@@ -567,80 +567,9 @@
       }).show();
     }
 
-<<<<<<< HEAD
-// ----------------- WEBIX UI READY -----------------
-webix.ready(function() {
-  webix.ui({
-    id: "master_layout",
-    rows: [
-      // Top Navigation Header
-      {
-        view: "toolbar",
-        height: 54,
-        css: "app-header",
-        cols: [
-          {
-            view: "label",
-            autowidth: true,
-            label: '<span class="brand-title">📚 BookPOS</span>'
-          },
-          { width: 15 },
-          {
-            view: "button",
-            value: "🛒 Kasir (POS)",
-            css: "nav-btn",
-            autowidth: true,
-            click: () => window.location.href = "index.html"
-          },
-          {
-            view: "button",
-            value: "📦 Master Data Buku",
-            css: "nav-btn active",
-            autowidth: true
-          },
-          {},
-          {
-            id: "db_status_pill",
-            view: "template",
-            borderless: true,
-            width: 220,
-            template: '<span class="status-pill status-demo">Mengecek DB...</span>'
-          },
-          {
-            view: "button",
-            value: "📂 Kelola Kategori",
-            autowidth: true,
-            click: openManageCategoriesModal
-          },
-          { width: 4 },
-          {
-            view: "button",
-            value: "👥 Kelola Pegawai",
-            autowidth: true,
-            click: openManageUsersModal
-          },
-          { width: 4 },
-          {
-            view: "button",
-            value: "⚡ Seed Data",
-            autowidth: true,
-            click: seedCatalog
-          },
-          { width: 6 },
-          {
-            view: "button",
-            value: "+ Tambah Buku Baru",
-            autowidth: true,
-            css: "webix_primary",
-            click: openAddBookModal
-          }
-        ]
-      },
-=======
     // ----------------- MODAL KELOLA USER (MODUL 3) -----------------
     async function openManageUsersModal() {
       if ($$("users_window")) $$("users_window").destructor();
->>>>>>> origin/branch1
 
       const users = await apiCall("/users");
 
