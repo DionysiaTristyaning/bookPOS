@@ -119,17 +119,17 @@ def get_categories_map():
 def query_books(search="", kategori_id="", status="aktif", stock_status=""):
     if not is_live_db():
         return []
-    
+
     db = get_db()
     cat_map = get_categories_map()
     query = {}
-    
+
     # Filter status aktif (default: aktif: True)
     if status == "aktif":
         query["aktif"] = True
     elif status == "nonaktif":
         query["aktif"] = False
-    
+
     if search:
         norm_s = normalize_isbn(search)
         regex_pat = re.compile(re.escape(search), re.IGNORECASE)
@@ -141,13 +141,13 @@ def query_books(search="", kategori_id="", status="aktif", stock_status=""):
         if norm_s:
             search_conditions.append({"isbn": {"$regex": re.compile(re.escape(norm_s))}})
         query["$or"] = search_conditions
-        
+
     if kategori_id and kategori_id != "all":
         try:
             query["kategori_id"] = ObjectId(kategori_id)
         except Exception:
             query["kategori_id"] = kategori_id
-            
+
     if stock_status == "low":
         query["stok"] = {"$gt": 0, "$lte": 5}
     elif stock_status == "out":
@@ -189,9 +189,9 @@ def seed_data():
     db_err = require_db()
     if db_err:
         return db_err
-    
+
     db = get_db()
-    
+
     # 1. Seed Categories (Fiksi, Non-Fiksi, Pelajaran, Komik)
     default_categories = [
         {"nama": "Fiksi", "slug": "fiksi"},
@@ -395,7 +395,7 @@ def update_category(cat_id):
     db_err = require_db()
     if db_err:
         return db_err
-        
+
     data = request.get_json() or {}
     nama = str(data.get("nama", "")).strip()
     if not nama:
@@ -473,7 +473,7 @@ def get_book_by_id(book_id):
     db_err = require_db()
     if db_err:
         return db_err
-    
+
     cat_map = get_categories_map()
     db = get_db()
     try:
@@ -579,7 +579,7 @@ def update_book(book_id):
     db_err = require_db()
     if db_err:
         return db_err
-        
+
     data = request.get_json() or {}
     raw_isbn = str(data.get("isbn", "")).strip()
     isbn = normalize_isbn(raw_isbn)
@@ -833,7 +833,7 @@ def toggle_user_active(user_id):
     denied = check_auth("admin")
     if denied:
         return denied
-        
+
     db_err = require_db()
     if db_err:
         return db_err
@@ -860,6 +860,8 @@ def toggle_user_active(user_id):
     return jsonify(serialize_doc(updated, hide_password=True))
 
 # ----------------- POS TRANSAKSI & CHECKOUT -----------------
+# CATATAN PERBAIKAN: objek Database PyMongo tidak boleh dicek dengan "if not db".
+# Gunakan "if db is None" agar tidak memicu error yang tampil sebagai "ID buku tidak valid".
 def _ambil_buku(book_id):
     db = get_db()
     if db is None:
