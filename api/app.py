@@ -862,7 +862,7 @@ def toggle_user_active(user_id):
 # ----------------- POS TRANSAKSI & CHECKOUT -----------------
 def _ambil_buku(book_id):
     db = get_db()
-    if not db:
+    if db is None:
         return None
     doc = None
     try:
@@ -878,7 +878,7 @@ def _ambil_buku(book_id):
 def _kurangi_stok(book_id, qty):
     waktu = datetime.now(WIB).isoformat()
     db = get_db()
-    if not db:
+    if db is None:
         return False
     # Coba update dengan id string terlebih dahulu
     for filter_key in ["id", "_id"]:
@@ -901,7 +901,7 @@ def _kurangi_stok(book_id, qty):
 
 def _kembalikan_stok(daftar):
     db = get_db()
-    if not db:
+    if db is None:
         return
     for v in daftar:
         b_id = v["buku_id"]
@@ -914,7 +914,7 @@ def _kembalikan_stok(daftar):
 
 def _simpan_transaksi(doc):
     db = get_db()
-    if not db:
+    if db is None:
         raise RuntimeError("Database tidak terhubung")
     hasil = db.transactions.insert_one(doc)
     doc["id"] = str(hasil.inserted_id)
